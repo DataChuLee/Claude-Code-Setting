@@ -1,0 +1,25 @@
+name: my-dev-setup
+version: 1.1.0
+description: "TDD 자동화 + 코드 리뷰 + 문서화 — Python 스택 기준 (참고용 문서, Claude Code에서 자동 인식되지 않음)"
+author: qasd1
+
+# 실제 자동화는 settings.json(hooks)과 .claude/ 디렉토리 구조로 작동함
+# 이 파일은 구성 요소 목록을 파악하기 위한 참고 문서임
+
+components:
+  skills:
+    - skills/tdd-cycle
+    - skills/api-conventions
+    - skills/code-quality
+  agents:
+    - agents/builder.md     # architect + tester 통합
+    - agents/reviewer.md    # reviewer + documenter 통합
+  commands:
+    - commands/init.md
+    - commands/tdd.md
+    - commands/review.md
+    - commands/doc.md
+    - commands/commit.md
+  hooks:
+    - hooks/post-write.ps1  # Python 파일 저장 시 pytest 자동 실행
+    - hooks/on-stop.ps1     # 응답 완료 시 ruff 체크

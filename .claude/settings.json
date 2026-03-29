@@ -1,0 +1,30 @@
+{
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/post-write.ps1\" -FilePath \"$CLAUDE_FILE_PATH\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/on-stop.ps1\"",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
