@@ -1,12 +1,12 @@
 # My Claude Code Setting
 
 프로젝트별 Claude Code 자동화 환경 템플릿.
-새 프로젝트 시작 시 `.claude/` 폴더를 복사하면 즉시 사용 가능.
+`git clone` 후 바로 사용 가능.
 
 ## 구조
 
 ```
-.claude/                      ← 새 프로젝트에 통째로 복사
+.claude/                      ← Claude Code 자동화 설정 전체
 ├── skills/
 │   ├── tdd-cycle/            ← TDD 루프 가이드 (자동 감지)
 │   ├── api-conventions/      ← REST API 컨벤션 (자동 감지)
@@ -32,12 +32,19 @@
 
 ## 새 프로젝트 시작
 
+```bash
+git clone https://github.com/DataChuLee/Claude-Code-Setting.git my-project
+cd my-project
+rm -rf .git   # 기존 history 제거
+git init      # 새 프로젝트로 시작
 ```
-1. 새 프로젝트 폴더에 .claude/ 통째로 복사
-2. .claude/templates/CLAUDE.md → 프로젝트 루트/CLAUDE.md 로 복사 후 수정
-3. .claude/templates/TODO.md → 기능 폴더/TODO.md 로 복사 후 수정
-4. Plan Mode (Shift+Tab) → 전체 피처 설계
-5. /tdd "첫 번째 기능" 으로 시작
+
+그 다음:
+```
+1. .claude/templates/CLAUDE.md → 프로젝트 루트/CLAUDE.md 로 복사 후 수정
+2. .claude/templates/TODO.md → 기능 폴더/TODO.md 로 복사 후 수정
+3. Plan Mode (Shift+Tab) → 전체 피처 설계
+4. /tdd "첫 번째 기능" 으로 시작
 ```
 
 ## 명령어
