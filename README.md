@@ -11,10 +11,15 @@ AI-Native Development 하네스 템플릿 (Python).
 ├── CLAUDE.md                 ← 하네스 지도 (작업 흐름·금지 사항)
 ├── settings.json             ← permissions.deny + PreToolUse 훅 등록
 ├── hooks/
-│   ├── guard.py              ← 위험 명령·시크릿 접근 차단 (PreToolUse)
-│   └── test_guard.py         ← guard 차단/허용 테스트
+│   ├── run_guard.py          ← PreToolUse 진입점 (guard 고장 시 guard 수정만 허용)
+│   ├── guard.py              ← 위험 명령·시크릿 접근·리뷰 없는 커밋 차단 규칙
+│   ├── gate.py               ← 검증 게이트: Stop(재시도 2회)·ruff 즉시 피드백·리뷰 기록
+│   └── test_*.py             ← 훅 테스트 (python -m pytest 에 포함)
 ├── skills/                   ← 자연어로 자동 실행, /이름 으로도 호출 가능
-│   ├── tdd/                  ← SPEC 승인 → Red → Green → Refactor
+│   ├── spec/                 ← 요구사항·인수조건 → 사람 승인 (SDD)
+│   ├── tdd/                  ← Red → Green → Refactor
+│   ├── eval/                 ← LLM 기능: 평가셋·채점기 먼저 (Eval-Driven)
+│   ├── gate-reset/           ← 사람만 실행: 게이트 재시도 횟수 초기화
 │   ├── review/               ← reviewer 에이전트로 리뷰 → TODO.md 기록
 │   ├── doc/                  ← docstring·README·API 문서
 │   ├── commit/               ← ruff + pytest + 로컬 커밋 (push 안 함)
@@ -50,6 +55,14 @@ src/<기능>/
 ├── CLAUDE.md  ← 기능 지도 (이 폴더 파일을 읽을 때 자동 로드)
 └── TODO.md    ← 작업 체크리스트·리뷰 기록
 ```
+
+## 검증 게이트
+
+| 언제 | 무엇 | 실패하면 |
+|---|---|---|
+| .py 저장 직후 | ruff | 즉시 Claude에게 오류 전달 |
+| 응답 종료 시 | pytest · ruff · mypy · 기능 TODO.md 갱신 | 2회까지 되돌려 고치게 함, 3번째엔 멈추고 사람 호출 (`/gate-reset`) |
+| 커밋 시 | reviewer가 본 코드 = 지금 코드 | 커밋 차단 |
 
 ## 안전장치
 

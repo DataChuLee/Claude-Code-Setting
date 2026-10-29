@@ -83,3 +83,77 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - 전역 `~/.claude/mods/command-guard`는 이 PC에만 있다. clone·CI에선 하네스 `guard.py`만 동작
 
 - 기존 `post-write.ps1`·`on-stop.ps1` 삭제 (등록 해제 상태였고, Phase 2에서 Python 게이트로 대체)
+
+---
+
+## Phase 2 — 검증 게이트
+
+### 설계
+| 결정 | 이유 |
+|---|---|
+| **재시도 카운터 = 파일** (`.claude/state/gate.json`, 세션별). Stop 훅이 실패마다 +1, 2회까지 `decision:"block"`(되돌려 보냄), 3번째에 `continue:false`(멈춤) | PLAN: "말이 아니라 카운터 파일이나 훅으로 강제". 모델이 뭐라고 하든 횟수는 파일이 센다 |
+| 카운터 초기화 = 사람이 `/gate-reset` 입력 (`UserPromptExpansion` 훅 + `disable-model-invocation`) | UserPromptSubmit은 Claude Code가 스스로 시작한 턴에도 발생(공식 문서) → 사람 입력을 구별 못 함. UserPromptExpansion은 사용자가 직접 입력한 명령에만 발생 |
+| 검사: pytest · ruff check · ruff format --check · mypy · 기능 TODO.md 갱신 | TODO 강제는 Phase 1 회고(말로만 지시하면 방치)의 환류 |
+| 통과 해시가 같으면 재검사 생략 | 커밋 전 변경이 남아 있는 동안 매 턴 같은 검사를 반복하지 않게 |
+| PostToolUse(Edit\|Write)는 ruff만, exit 2 → Claude에게 즉시 | pytest는 TDD Red에서 일부러 실패하므로 저장마다 돌리면 소음 |
+| **리뷰는 커밋 시점에 강제** (guard가 `git commit` 전 해시 대조) | Stop에 두면 작업 중 질문하려고 멈출 때마다 리뷰를 강요 |
+| 리뷰 해시 = 마지막 커밋 대비 바뀐 .py 경로+내용 | 스테이징 여부와 무관해야 commit 스킬의 `git add`가 리뷰를 무효로 만들지 않음 |
+| commit 스킬은 **검사만** (ruff --fix/format 안 함) | 커밋 직전 자동 수정이 리뷰한 코드를 바꿔 커밋이 영원히 막히는 함정 |
+| reviewer 에이전트 `tools: Read, Grep, Glob, Bash` | 수정 권한이 없어야 구현과 분리됨 |
+| eval 마커는 기본 게이트에서 제외 (`addopts = -m 'not eval'`) | LLM 평가는 API 비용 → eval 스킬이 명시적으로 실행 |
+| 도구는 전부 `python -m ...`, 루트 `pyproject.toml`에 dev 의존성 | PATH 차이 제거. ruff가 실행 파일로만 깔려 `python -m ruff`가 안 되던 문제 발견 → pip 설치 |
+
+### 실패와 해결
+1. **guard 자기 잠김 (2회)** — guard.py를 두 단계로 고치다 중간 상태(정의 전 호출, import 누락)에서 guard가 죽음 → `onFailure:"block"` 때문에 Bash·Edit·Write 등 **모든 도구가 막혀 guard를 고칠 수도 없음**
+   - 임시 복구: matcher 목록에 없던 `Monitor` 도구로 한 줄 수정 (사용자 승인). → 이것 자체가 **구멍**
+   - 해결 ①: matcher `*` + guard가 도구 이름이 아니라 **입력 형태**(command / 경로)로 판정 → Monitor 등 셸 실행 도구 전부 검사 (실전: Monitor로 `gh pr merge` 차단 확인)
+   - 해결 ②: **`run_guard.py` 진입점** — guard가 고장 나면(예외·문법 오류 포함) guard.py 수정만 허용, 나머지 차단. 이후 같은 실수를 두 번 더 했을 때 이 길로 바로 복구됨
+   - 교훈: fail closed 장치에는 **복구 경로**가 함께 있어야 한다. 검사기 자신을 고치는 수정은 한 번에 완결되게
+2. **새 ruff가 한글을 2칸으로 세어 E501** → E501 끔 (줄 길이는 formatter 담당, code-quality 스킬 기준과 일치)
+3. **커밋 리뷰 검사가 엉뚱한 저장소를 봄** — 세션 저장소 기준이라 `git -C <다른곳> commit`, `cd 다른곳 && git commit`도 막음 → `cd`·`-C`를 따라가 실제 커밋 대상을 검사. Git Bash 경로(`/c/..`)를 Windows 경로로 변환
+4. **셸 문자열 오탐** — heredoc 속 `git commit`·`.env` 글자를 명령으로 판정 → 코드·문서 작성은 파일 도구(Edit/Write, 경로만 검사)로
+5. **게이트 테스트 77초** — 매 테스트가 실제 pytest/ruff/mypy 실행 → 카운터 로직 테스트는 검사 결과를 가짜로 바꿔 끼우고, 실제 도구는 대표 테스트 2개만 → 전체 약 35초 (Windows git init 비용이 큼)
+6. **reviewer가 찾은 하네스 구멍** (검증용 임시 저장소에서) — mypy가 `src/`·`.claude/hooks/`만 검사해 루트 .py·`tests/`는 타입 검사 밖, pytest `pythonpath` 미설정 → `tests/`와 그 밖에서 바뀐 .py까지 mypy 대상, `pythonpath = ["src", "."]`
+
+7. **커밋 전 reviewer 리뷰에서 🔴 3건 (❌ 수정 후 재검토)** — 리뷰어가 `guard.decide`를 직접 돌려 재현까지 함
+   - 🔴 모델이 직접 우회: `.claude/state/review.json` 쓰기, `python gate.py review-done`(리뷰 위조), `gate.py reset`(사람 전용 초기화) → 상태 폴더 쓰기·두 모드 직접 실행 차단 (읽기는 Read 도구로 허용)
+   - 🔴 커밋 감지 우회: `bash -c "git commit"`(따옴표 한 토큰), `git -c alias.ci=commit ci`, `git merge`(커밋 생성) → `-c`/`-Command` 안의 명령을 재귀 검사, `git -c alias.*` 차단, merge·cherry-pick·revert·am·pull·rebase도 리뷰 대상
+   - 🔴 멈춘 테스트가 게이트를 조용히 통과: 검사당 240초 × 4 > 훅 timeout 300초 → 훅이 죽으면 카운터도 안 오르고 로그도 없음 → 모든 검사 합계 270초 마감, 초과는 실패로 셈
+   - 🟡 반영: `/gate-reset` 경로를 실제 `main()`으로 테스트, 🔴 남은 리뷰는 커밋을 안 열어 줌, `.claude/**`·`pyproject.toml` 변경도 리뷰 대상(게이트를 끌 수 있는 파일), ruff stderr 전달, 깨진 gate.json 대비, 해시 구분자
+8. **리뷰 보고서가 비어 있음** — 위 🔴 남은 리뷰 차단을 넣고 보니 `review.json`의 summary가 빈 문자열. 공식 문서: 최신 버전은 서브에이전트 보고서를 `SubagentHandback` 도구로 넘기고 SubagentStop의 `last_assistant_message`는 맺음말뿐 → PostToolUse(`SubagentHandback`)에서 `tool_input.message`로 기록, 빈 보고서·reviewer 아닌 에이전트는 무시
+9. guard 수정을 **"정의 먼저, 연결은 나중"** 순서로 하자 이번엔 잠기지 않음 (정의만 추가하는 수정은 언제 멈춰도 안전)
+10. **2차 reviewer 리뷰에서 🔴 4건 (또 ❌)** — 리뷰 기록 장치 자체의 구멍
+   - 🔴 거절이 승인으로 바뀜: Handback이 ❌를 기록한 뒤 SubagentStop이 ❌ 없는 맺음말로 덮어씀 → SubagentStop 등록 제거, Handback만
+   - 🔴 `"❌" in 보고서` 판정은 이모지 없는 "수정 후 재검토"를 승인으로 봄 → `승인 가능 여부:` 줄을 찾아 판정, 줄이 없으면 거절
+   - 🔴 상태 경로 우회: `.claude/hooks/../state`, `.CLAUDE/STATE`(NTFS 대소문자 무시) → resolve한 경로를 대소문자 무시로 검사
+   - 🔴 커밋 감지 우회: `bash -lc`·`sh -ec`(붙여 쓴 플래그), `git config alias.ci commit`, `--config-env` → `-[a-z]*c` 전부 셸 플래그로, alias 정의·`--config-env` 차단
+   - 🟡 `pull`·`rebase`는 리뷰 대상에서 제외 (차단 소음)
+   - 교훈: 검증 장치를 만들면 **그 장치를 속이는 방법**이 다음 공격 면이 된다. 분리된 리뷰어가 두 번 연속 그 면을 찾아냄
+   - 3차 리뷰 🔴 1건: `승인 불가`·`미승인`도 '승인' 글자를 포함해 승인으로 읽힘 → 정확히 `✅ 승인`으로 시작할 때만 승인
+   - **리뷰 기록 훅 실전 확인**: 3차 리뷰(❌)가 SubagentHandback으로 오자 `review.json`에 `agent_type: reviewer`, `rejected: true`, `hash: null` 기록 → Handback 페이로드에 agent_type이 실린다는 것과 거절이 커밋을 열지 않는다는 것을 실제로 확인
+11. 게이트 상태 파일이 리뷰 해시를 흔듦 — `.gitignore`가 없으면 `.claude/state/`가 "바뀐 설정"으로 잡혀 매번 해시가 달라짐 → 상태 폴더는 항상 리뷰 대상에서 제외
+
+### 검증 결과 (일부러 실패시키기 — 임시 저장소에서 `claude -p`)
+| 시나리오 | 결과 |
+|---|---|
+| 항상 실패하는 테스트 + "고치지 마라" 지시 | gate-log: `block 1/2` → `block 2/2` → `escalate 3` 후 멈춤. 모델이 매번 "고치지 않겠다"고 답해도 파일 카운터대로 정확히 3번째에 정지 |
+| `import os` 한 줄 저장 | PostToolUse가 즉시 `F401 os imported but unused` 전달 → Claude가 고침 → Stop 게이트 pass |
+| 리뷰 없이 `git add . && git commit` | `[harness-guard] 커밋 전에 reviewer 에이전트로...` 차단 → Claude가 review 스킬로 reviewer 호출 → SubagentStop이 해시 기록 → 커밋 성공 |
+| 코드 변경 후 TODO.md 미갱신 | 단위 테스트로 검증 (`test_feature_code_without_todo_update_fails`) |
+| 위험 명령 회귀 | Phase 1 테스트 전부 통과 + 실전 차단 확인 |
+| 이 세션 자체 (dogfooding) | 저장할 때마다 PostToolUse가 실제 실수(정의 전 호출, import 누락)를 즉시 잡음. 이 커밋도 reviewer 리뷰 후에만 가능 |
+| 리뷰 지적 우회 경로 (실전) | `bash -c "git push nonexistent main"` 차단, Write로 `.claude/state/review.json` 차단, `gate.py review-done` 직접 실행 차단, Read는 허용 |
+| 단위 테스트 | `python -m pytest` → 122 passed (`.claude/hooks` 포함) |
+
+### 알려진 한계
+- 문자열 검사: Python 스크립트 안에서 `subprocess`로 git을 부르면 guard가 못 본다 (임시 저장소 초기 커밋을 이렇게 만듦 — 테스트 준비 용도로만). 최종 경계는 GitHub 브랜치 보호
+- Stop 게이트 비용: 바뀐 코드가 있으면 응답 종료마다 전체 테스트(~35초). 통과 해시로 반복은 줄임
+- Stop 게이트 훅 자체가 죽으면 막지 않고 통과 (fail open) — 응답이 영원히 끝나지 않는 상황을 피하려는 선택. 검사 시간 초과는 270초 마감으로 실패 처리되므로, 남은 fail open은 gate.py 버그뿐
+- **모델이 `.claude/hooks/*`·`settings.json`을 고쳐 게이트를 끌 수 있다** — 하네스 개발 자체가 그 파일을 고치는 일이라 막지 않음. 대신 그 변경은 리뷰 대상이라 reviewer 승인 없이는 커밋되지 않고, 머지는 사람만 함
+- 리뷰 판정은 보고서의 `승인 가능 여부:` 줄로 판단 (reviewer 출력 형식에 의존. 줄이 없으면 거절이라 안전한 쪽)
+- **임의 Python으로 위조 가능**: `python -c "import gate; gate.review_done(...)"`, 문자열을 조립한 경로로 상태 파일 쓰기 → 문자열 검사로는 못 막음. 최종 경계는 사람이 머지하는 PR (Phase 3)
+- 이미 전역에 등록된 git alias(`~/.gitconfig`)로 `git ci` 하면 커밋 감지를 못 함 (새로 정의하는 것만 막음)
+- 셸 리다이렉트로 상태 파일 쓰기는 글자 그대로만 검사: `echo x > .claude/hooks/../state/...`, `cd .claude && echo x > state/...`는 못 막음 (파일 도구 경로는 정규화해서 막음). 임의 Python 위조와 같은 부류
+- `pull`·`rebase`는 리뷰 대상이 아님
+- 중첩 저장소(`sample-automation/`처럼 자체 `.git`)에서는 리뷰 기록이 세션 저장소에 쓰여 그 저장소 커밋이 막힘 → 중첩 저장소는 두지 않는다 (삭제 예정)
+- `cd` 추적은 `Set-Location -Path X`, `$VAR`, `~`를 해석하지 못함 (모르면 차단 쪽)

@@ -1,7 +1,11 @@
 ---
 name: reviewer
-description: "코드 리뷰 + 문서화 전문 에이전트. 완성된 코드의 품질/보안/설계 검토 후 docstring, README, API 문서 작성."
+description: "구현과 분리된 코드 리뷰 에이전트 (읽기 전용). 변경된 코드의 정확성·보안·설계를 검토하고 🔴/🟡/💡로 보고한다. 커밋 전 필수 — 끝나면 훅이 리뷰한 코드의 해시를 기록한다. doc 스킬에서는 문서 초안을 작성해 보고한다."
+tools: Read, Grep, Glob, Bash
 ---
+
+> 이 에이전트는 파일을 수정할 수 없다 (tools에 Edit/Write 없음). 지적만 하고, 고치는 것은 구현 쪽이 한다.
+> 문서화 요청을 받으면 docstring·README 초안을 **보고서에 담아** 돌려준다 (적용은 호출한 쪽이).
 
 # Reviewer Agent
 

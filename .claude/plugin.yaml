@@ -10,7 +10,10 @@ components:
   instructions:
     - CLAUDE.md               # 하네스 지도
   skills:                     # 자연어 자동 실행 + /이름 호출
+    - skills/spec
     - skills/tdd
+    - skills/eval
+    - skills/gate-reset       # 사람만 실행
     - skills/review
     - skills/doc
     - skills/commit
@@ -21,5 +24,7 @@ components:
     - agents/builder.md       # 설계 + 테스트 먼저
     - agents/reviewer.md      # 리뷰 + 문서화
   hooks:
-    - hooks/guard.py          # PreToolUse: 위험 명령·시크릿 차단
-  # Phase 2: 검증 게이트(Stop 훅), spec·eval 스킬 / Phase 3: ship 스킬
+    - hooks/run_guard.py      # PreToolUse 진입점
+    - hooks/guard.py          # 위험 명령·시크릿·리뷰 없는 커밋 차단
+    - hooks/gate.py           # Stop 게이트·PostToolUse ruff·SubagentHandback 리뷰 기록·/gate-reset
+  # Phase 3: ship 스킬

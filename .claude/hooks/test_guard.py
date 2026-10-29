@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from guard import check_command, check_path  # noqa: E402
+import gate  # noqa: E402
+from guard import check_command, check_path, decide  # noqa: E402
 
 HOOKS = Path(__file__).parent
 GUARD = HOOKS / "run_guard.py"  # 훅 진입점 (guard.py를 불러 판정)
@@ -51,6 +52,18 @@ BLOCKED = [
     ('"/c/Program Files/GitHub CLI/gh.exe" pr merge 1', "feature"),
     ("env FOO=1 git push origin main", "feature"),
     ("sudo git push --force origin agent/1-x", "agent/1-x"),
+    # 셸 안의 셸, alias, 하네스 상태 조작 (Phase 2 리뷰 지적)
+    ('bash -c "git push origin main"', "feature"),
+    ("pwsh -Command 'gh pr merge 1'", "feature"),
+    ("git -c alias.ci=commit ci -m x", "feature"),
+    ("python .claude/hooks/gate.py review-done", "feature"),
+    ("python .claude/hooks/gate.py reset", "feature"),
+    ("echo {} > .claude/state/review.json", "feature"),
+    ("echo {} > .CLAUDE/STATE/review.json", "feature"),
+    ('bash -lc "git push origin main"', "feature"),
+    ('sh -ec "gh pr merge 1"', "feature"),
+    ("git config alias.ci commit", "feature"),
+    ("git --config-env=alias.ci=V ci", "feature"),
     # 인터프리터로 우회 (따옴표 속 경로)
     ("python -c \"print(open('.env').read())\"", "feature"),
     ("python -c \"open('keys/server.pem').read()\"", "feature"),
@@ -230,3 +243,75 @@ def test_broken_guard_blocks_everything_else(tmp_path):
         {"tool_name": "Edit", "tool_input": {"file_path": str(hooks / "other.py")}},
     ):
         assert "고장" in (_deny(_run_broken(hooks, payload)) or "")
+
+
+def _repo_with_change(tmp_path: Path) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@t"],
+        ["config", "user.name", "t"],
+    ):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / "app.py").write_text("X = 1\n")
+    return tmp_path
+
+
+def test_commit_without_review_is_blocked(tmp_path):
+    repo = _repo_with_change(tmp_path)
+    payload = {"tool_input": {"command": "git commit -m 'feat: x'"}, "cwd": str(repo)}
+    assert "reviewer" in (decide(payload) or "")
+
+
+def test_commit_after_review_of_same_code_is_allowed(tmp_path):
+    repo = _repo_with_change(tmp_path)
+    approve = {
+        "agent_type": "reviewer",
+        "tool_input": {"message": "승인 가능 여부: ✅ 승인"},
+    }
+    gate.review_done(approve, repo)
+    payload = {"tool_input": {"command": "git commit -m 'feat: x'"}, "cwd": str(repo)}
+    assert decide(payload) is None
+    (repo / "app.py").write_text("X = 2\n")
+    assert decide(payload)
+
+
+def test_commit_review_checks_the_repo_actually_committed(tmp_path):
+    changed = _repo_with_change(tmp_path / "changed")
+    clean = tmp_path / "clean"
+    clean.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=clean, check=True)
+    for command in (
+        f'git -C "{clean}" commit -m x',
+        f'cd "{clean}" && git commit -m x',
+    ):
+        assert decide({"tool_input": {"command": command}, "cwd": str(changed)}) is None
+
+
+def test_harness_state_cannot_be_written_but_can_be_read(tmp_path):
+    state = str(tmp_path / ".claude" / "state" / "review.json")
+    assert decide({"tool_name": "Write", "tool_input": {"file_path": state}})
+    assert decide({"tool_name": "Edit", "tool_input": {"file_path": state}})
+    assert decide({"tool_name": "Read", "tool_input": {"file_path": state}}) is None
+    for disguised in (
+        str(tmp_path / ".claude" / "hooks" / ".." / "state" / "review.json"),
+        str(tmp_path / ".CLAUDE" / "STATE" / "review.json"),
+    ):
+        assert decide({"tool_name": "Write", "tool_input": {"file_path": disguised}})
+
+
+def test_commit_inside_nested_shell_or_merge_needs_review(tmp_path):
+    repo = _repo_with_change(tmp_path)
+    for command in (
+        'bash -c "git commit -m x"',
+        'bash -lc "git commit -m x"',
+        "git merge --no-ff topic",
+    ):
+        assert decide({"tool_input": {"command": command}, "cwd": str(repo)})
+
+
+def test_git_bash_drive_path_is_converted():
+    from guard import _native_path
+
+    expected = "C:/Users/me" if sys.platform == "win32" else "/c/Users/me"
+    assert _native_path("/c/Users/me") == expected

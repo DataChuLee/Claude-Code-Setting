@@ -6,7 +6,8 @@ decide(payload)가 차단 이유를 돌려주면 run_guard.py가 deny로 응답�
 import re
 import shlex
 import subprocess
-from pathlib import PurePath
+import sys
+from pathlib import Path, PurePath
 
 PROTECTED_BRANCHES = {"main", "master"}
 SECRET_NAMES = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"}
@@ -89,6 +90,13 @@ def _check_git(tokens: list[str], branch: str) -> str | None:
     if "--no-verify" in tokens:
         return "--no-verify 로 훅을 우회할 수 없습니다"
     sub = _git_subcommand(tokens)
+    lowered = [t.lower() for t in tokens]
+    config_env = any(t.startswith("--config-env") for t in lowered)
+    sets_alias = any(t.startswith("alias.") for t in lowered) and (
+        "-c" in tokens or (sub is not None and tokens[sub] == "config")
+    )
+    if config_env or sets_alias:
+        return "git alias 정의(-c alias.*, config alias.*, --config-env)로 검사를 피할 수 없습니다"
     if sub is None or tokens[sub] != "push":
         return None
     args = tokens[sub + 1 :]
@@ -120,12 +128,53 @@ def _check_gh(tokens: list[str], segment: str) -> str | None:
     return None
 
 
+SHELLS = {"bash", "sh", "zsh", "pwsh", "powershell", "cmd"}
+SHELL_FLAGS = {"-c", "-command", "/c"}
+HARNESS_STATE = re.compile(r"\.claude[/\\]state\b", re.I)  # NTFS는 대소문자 무시
+GATE_PRIVATE_MODE = re.compile(r"gate\.py\W+(review-done|reset)\b")
+COMMIT_LIKE = {
+    "commit",
+    "merge",
+    "cherry-pick",
+    "revert",
+    "am",
+}  # pull·rebase는 소음이 커서 제외
+READ_TOOLS = {"Read", "Grep", "Glob"}
+
+
+def _nested_commands(tokens: list[str]) -> list[str]:
+    """bash -c "..." · pwsh -Command "..." 안의 명령 (따옴표로 묶여 검사를 피하던 구멍)."""
+    name = PurePath(tokens[0].replace("\\", "/")).name.lower().removesuffix(".exe")
+    if name not in SHELLS:
+        return []
+    # -c 뿐 아니라 -lc·-ec처럼 붙여 쓴 플래그도
+    return [
+        tokens[i + 1]
+        for i, t in enumerate(tokens[:-1])
+        if t.lower() in SHELL_FLAGS or re.fullmatch(r"-[a-z]*c", t.lower())
+    ]
+
+
+def _harness_reason(segment: str) -> str | None:
+    """게이트 상태·전용 모드는 훅만 다룬다 (모델이 리뷰 기록을 위조하거나 카운터를 초기화하지 못하게)."""
+    if HARNESS_STATE.search(segment):
+        return "하네스 상태(.claude/state)는 훅만 씁니다. 읽기는 Read 도구로"
+    if GATE_PRIVATE_MODE.search(segment):
+        return "gate.py review-done/reset 은 훅 전용입니다 (리뷰는 reviewer 에이전트, 초기화는 사람이 /gate-reset)"
+    return None
+
+
 def check_command(command: str, branch: str) -> str | None:
     """셸 명령이 금지 대상이면 차단 이유를, 아니면 None을 돌려준다."""
     for segment in SEGMENT_SPLIT.split(command):
         tokens = _tokens(segment.strip())
         if not tokens:
             continue
+        for nested in _nested_commands(tokens):
+            if nested_reason := check_command(nested, branch):
+                return nested_reason
+        if harness_reason := _harness_reason(segment):
+            return harness_reason
         head, program_tokens = _program(tokens)
         if head == "git":
             reason = _check_git(program_tokens, branch)
@@ -158,6 +207,63 @@ def _current_branch(cwd: str | None) -> str:
         return ""
 
 
+def _native_path(path: str) -> str:
+    """Git Bash 표기(/c/Users/..)를 Windows 경로(C:/Users/..)로."""
+    match = re.match(r"^/([a-zA-Z])(/.*)?$", path)
+    if sys.platform == "win32" and match:
+        return f"{match.group(1).upper()}:{match.group(2) or '/'}"
+    return path
+
+
+def _commit_dirs(command: str, cwd: str | None) -> list[Path]:
+    """명령이 커밋하는 저장소 위치들. 앞선 cd 와 git -C 를 따라간다."""
+    here = Path(cwd or ".")
+    dirs = []
+    for segment in SEGMENT_SPLIT.split(command):
+        tokens = _tokens(segment.strip())
+        if not tokens:
+            continue
+        if tokens[0].lower() in ("cd", "set-location", "pushd") and len(tokens) > 1:
+            here = here / _native_path(tokens[1])  # 절대 경로면 그대로 바뀜
+            continue
+        for nested in _nested_commands(tokens):
+            dirs.extend(_commit_dirs(nested, str(here)))
+        head, program_tokens = _program(tokens)
+        sub = _git_subcommand(program_tokens) if head == "git" else None
+        if sub is None or program_tokens[sub] not in COMMIT_LIKE:
+            continue
+        target = here
+        for i in range(1, sub):
+            if program_tokens[i] == "-C" and i + 1 < sub:
+                target = target / _native_path(program_tokens[i + 1])
+        dirs.append(target)
+    return dirs
+
+
+def _review_reason(repo_dir: Path) -> str | None:
+    """커밋 전 리뷰 필수: reviewer가 본 코드와 지금 코드가 같아야 한다."""
+    import gate  # 같은 폴더. 해시 계산을 게이트와 공유
+
+    try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=repo_dir,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except OSError:
+        top = ""  # 확인할 수 없으면 차단
+    if top and gate.review_matches(Path(top)):
+        return None
+    return "커밋 전에 reviewer 에이전트로 현재 변경을 검토하세요 (리뷰 후 코드가 바뀌었으면 다시 검토)"
+
+
+def _commit_review_reason(command: str, cwd: str | None) -> str | None:
+    return next(
+        (r for d in _commit_dirs(command, cwd) if (r := _review_reason(d))), None
+    )
+
+
 def decide(payload: dict) -> str | None:
     """훅 입력 하나를 판정한다. 도구 이름이 아니라 입력 형태로 본다 (matcher "*").
 
@@ -166,10 +272,19 @@ def decide(payload: dict) -> str | None:
     tool_input = payload.get("tool_input") or {}
     command = tool_input.get("command")
     if isinstance(command, str):
-        return check_command(command, _current_branch(payload.get("cwd")))
+        cwd = payload.get("cwd")
+        reason = check_command(command, _current_branch(cwd))
+        return reason or _commit_review_reason(command, cwd)
     path = (
         tool_input.get("file_path")
         or tool_input.get("notebook_path")
         or tool_input.get("path")
     )
-    return check_path(path) if isinstance(path, str) else None
+    if not isinstance(path, str):
+        return None
+    # hooks/../state 같은 우회를 막으려고 정규화한 경로로 검사
+    if HARNESS_STATE.search(str(Path(path).resolve())) and (
+        payload.get("tool_name") not in READ_TOOLS
+    ):
+        return "하네스 상태(.claude/state)는 훅만 씁니다"
+    return check_path(path)

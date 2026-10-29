@@ -17,6 +17,7 @@ ignore = ["E501"]  # 줄 길이는 ruff format이 관리. 한글 문자열은 2�
 [tool.pytest.ini_options]
 # .claude/ 는 점 폴더라 pytest 기본 탐색에서 빠지므로 명시
 testpaths = ["tests", ".claude/hooks"]
+pythonpath = ["src", "."]  # `pytest`로 실행해도 `python -m pytest`처럼 import 되게 (리뷰 지적)
 markers = ["eval: LLM 평가 (API 비용 발생, 기본 게이트에서 제외)"]
 addopts = "-m 'not eval'"
 
