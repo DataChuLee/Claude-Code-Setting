@@ -42,6 +42,11 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 3. **인터프리터 우회** — `python -c "open('.env')"`처럼 따옴표 속 경로는 토큰 검사로 못 잡음. 원문에서 경로 후보를 정규식으로 찾아 검사하도록 변경 (테스트 3개 실패 확인 → 수정). 같은 과정에서 `.env.example.bak` 오탐도 발견해 수정
    - 부작용: `.env` 글자가 들어간 셸 명령(예: `grep "\.env"`)도 막힘. 파일 도구(Read/Grep)는 경로만 검사하므로 그쪽을 쓴다
    - 한계: 문자열 검사라 난독화(base64 등)는 못 막는다 → 최종 경계는 GitHub 브랜치 보호, 시크릿은 애초에 저장소 밖(GitHub Secrets)에 둔다
+4. **재리뷰에서 발견: 실행 파일 경로·접두어 우회** — 첫 단어가 정확히 `git`/`gh`일 때만 검사해서 `git.exe push origin main`, `"C:\...\gh.exe" pr merge`, `env FOO=1 git push`, `& git ...`, `sudo git ...`가 통과. 이 세션에서 gh를 전체 경로로 써 왔으니 실제로 일어날 수 있던 일
+   - 해결: 토큰의 파일 이름(확장자 제외)으로 git/gh를 찾음 (테스트 5개 실패 확인 → 수정). 실전에서 전체 경로 `gh.exe pr merge 99999`가 막히는 것 확인
+5. **오탐: `git stash push`를 main push로 판정** — `push`가 명령 어디에든 있으면 push로 봤음 → git 전역 옵션(`-C` 등)을 건너뛴 **하위 명령**이 push일 때만 검사
+6. **`.claude/CLAUDE.md`의 `@docs/PLAN.md` 경로 오류** — import는 그 파일 기준 상대 경로(공식 문서) → `@../docs/PLAN.md`
+7. builder 에이전트가 옛 구조(레이어별 폴더, 루트 TODO.md)를 안내 → `src/<기능>/{SPEC,CLAUDE,TODO}.md`, SPEC 인수조건 ↔ 테스트 1:1로 수정
 
 ### 검증 결과
 **단위 테스트**: `python -m pytest .claude/hooks/test_guard.py -W error` → **67 passed**

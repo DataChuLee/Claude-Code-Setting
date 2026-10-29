@@ -1,5 +1,5 @@
 # 하네스 지도
-AI-Native 개발 하네스. 전체 계획 @docs/PLAN.md · 설계 기록 docs/HARNESS.md
+AI-Native 개발 하네스. 전체 계획 @../docs/PLAN.md · 설계 기록 docs/HARNESS.md
 (프로젝트별 내용은 루트 `CLAUDE.md`, 기능별 내용은 `src/<기능>/CLAUDE.md`)
 
 ## 작업 흐름 — 프로젝트 스킬을 우선 사용 (전역 superpowers 등보다 먼저)

@@ -22,14 +22,14 @@ description: "설계 + TDD Red 단계 전문 에이전트. 새 프로젝트/기�
 
 ## 작업 순서
 
-1. 요구사항 분석 (무엇을 만드는가)
+1. 요구사항 분석 — `src/<기능>/SPEC.md`의 인수조건을 읽는다. 인수조건마다 테스트가 최소 하나 있어야 한다
 2. 도메인 모델 정의 (핵심 개념과 관계)
 3. 폴더 구조 제안
 4. API 설계 (있다면)
 5. 데이터 모델 설계
 6. 구현 순서 및 단계 분리
 7. `tests/test_{기능명}.py` 작성 — 정상/경계값/예외 케이스 포함
-8. `pytest tests/test_{기능명}.py` 실행 → 실패 확인 (Red 상태)
+8. `python -m pytest tests/test_{기능명}.py` 실행 → 실패 확인 (Red 상태)
 
 ## 테스트 작성 규칙
 
@@ -61,14 +61,13 @@ def test_calculate_total_with_empty_cart_returns_zero():
 ### 폴더 구조
 project/
 ├── src/
-│   ├── domain/     ← 핵심 비즈니스 로직
-│   ├── api/        ← 라우터/핸들러
-│   ├── services/   ← 비즈니스 서비스
-│   ├── models/     ← 데이터 모델
-│   └── utils/      ← 공통 유틸
+│   └── <기능>/      ← 기능 단위 폴더
+│       ├── SPEC.md     ← 요구사항·인수조건 (사람 승인)
+│       ├── CLAUDE.md   ← 기능 지도
+│       ├── TODO.md     ← 작업 체크리스트
+│       └── *.py
 ├── tests/
-├── CLAUDE.md
-└── TODO.md
+└── CLAUDE.md        ← 프로젝트 지도
 
 ### 핵심 도메인 모델
 ...

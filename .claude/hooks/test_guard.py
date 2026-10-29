@@ -44,6 +44,12 @@ BLOCKED = [
     ("echo $OPENAI_API_KEY", "feature"),
     ("echo $env:OPENAI_API_KEY", "feature"),
     ("Get-ChildItem env:", "feature"),
+    # 실행 파일 경로·접두어로 우회
+    ("git.exe push origin main", "feature"),
+    ('& "C:\\Program Files\\Git\\bin\\git.exe" push origin main', "feature"),
+    ('"/c/Program Files/GitHub CLI/gh.exe" pr merge 1', "feature"),
+    ("env FOO=1 git push origin main", "feature"),
+    ("sudo git push --force origin agent/1-x", "agent/1-x"),
     # 인터프리터로 우회 (따옴표 속 경로)
     ("python -c \"print(open('.env').read())\"", "feature"),
     ("python -c \"open('keys/server.pem').read()\"", "feature"),
@@ -62,6 +68,9 @@ ALLOWED = [
     ("git push", "agent/12-foo"),
     ("git push --dry-run origin agent/0-test", "main"),
     ("git status", "main"),
+    ("git stash push -m wip", "main"),
+    ("git -C sub log --oneline", "main"),
+    ('"/c/Program Files/GitHub CLI/gh.exe" pr view 1', "main"),
     ("git commit -m 'fix env loading'", "feature"),
     ("git commit -m 'chore: ignore .env'", "feature"),
     ("cat README.md", "main"),

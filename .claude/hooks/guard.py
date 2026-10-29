@@ -22,6 +22,7 @@ PATH_CANDIDATE = re.compile(
     r"[\w./\\~-]*(\.env[\w.]*|\.(pem|key)\b|id_(rsa|ed25519|ecdsa|dsa)\b|\.ssh[/\\][\w.]*)"
 )
 PUSH_OPTS_WITH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 
 
 def check_path(path: str) -> str | None:
@@ -66,12 +67,35 @@ def _push_targets(args: list[str], branch: str) -> list[str]:
     return targets
 
 
+def _program(tokens: list[str]) -> tuple[str, list[str]]:
+    """git/gh를 경로(git.exe, C:\\...\\gh.exe)나 접두어(env, sudo, &) 뒤에서도 찾는다."""
+    for i, t in enumerate(tokens):
+        name = PurePath(t.replace("\\", "/")).name.lower().removesuffix(".exe")
+        if name in ("git", "gh"):
+            return name, [name, *tokens[i + 1 :]]
+    return tokens[0].lower(), tokens
+
+
+def _git_subcommand(tokens: list[str]) -> int | None:
+    """git 전역 옵션(-C 경로 등)을 건너뛰고 하위 명령의 위치를 돌려준다."""
+    skip = False
+    for i, t in enumerate(tokens[1:], start=1):
+        if skip:
+            skip = False
+        elif t in GIT_OPTS_WITH_VALUE:
+            skip = True
+        elif not t.startswith("-"):
+            return i
+    return None
+
+
 def _check_git(tokens: list[str], branch: str) -> str | None:
     if "--no-verify" in tokens:
         return "--no-verify 로 훅을 우회할 수 없습니다"
-    if "push" not in tokens:
+    sub = _git_subcommand(tokens)
+    if sub is None or tokens[sub] != "push":
         return None
-    args = tokens[tokens.index("push") + 1 :]
+    args = tokens[sub + 1 :]
     if "--dry-run" in args or "-n" in args:
         return None
     if any(
@@ -106,11 +130,11 @@ def check_command(command: str, branch: str) -> str | None:
         tokens = _tokens(segment.strip())
         if not tokens:
             continue
-        head = tokens[0].lower()
+        head, program_tokens = _program(tokens)
         if head == "git":
-            reason = _check_git(tokens, branch)
+            reason = _check_git(program_tokens, branch)
         elif head == "gh":
-            reason = _check_gh(tokens, segment)
+            reason = _check_gh(program_tokens, segment)
         else:
             reason = None
         if reason is None and (head == "printenv" or tokens == ["env"]):
@@ -120,7 +144,7 @@ def check_command(command: str, branch: str) -> str | None:
         if reason is None and SECRET_VAR.search(segment):
             reason = "KEY/TOKEN/SECRET 환경변수 값을 출력할 수 없습니다"
         # 커밋 메시지 속 ".env" 글자는 파일 접근이 아니므로 제외
-        if reason is None and tokens[:2] != ["git", "commit"]:
+        if reason is None and program_tokens[:2] != ["git", "commit"]:
             candidates = (m.group(0) for m in PATH_CANDIDATE.finditer(segment))
             reason = next((r for c in candidates if (r := check_path(c))), None)
         if reason:
