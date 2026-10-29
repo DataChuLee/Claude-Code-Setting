@@ -1,33 +1,30 @@
 # My Claude Code Setting
 
-프로젝트별 Claude Code 자동화 환경 템플릿.
-`git clone` 후 바로 사용 가능.
+AI-Native Development 하네스 템플릿 (Python).
+사람은 의도를 말하고 승인만 하며, 작업 흐름은 스킬이, 안전장치는 훅이 맡는다.
+전체 로드맵: [docs/PLAN.md](docs/PLAN.md) · 설계 기록: [docs/HARNESS.md](docs/HARNESS.md)
 
 ## 구조
 
 ```
-.claude/                      ← Claude Code 자동화 설정 전체
-├── skills/
-│   ├── tdd-cycle/            ← TDD 루프 가이드 (자동 감지)
-│   ├── api-conventions/      ← REST API 컨벤션 (자동 감지)
-│   └── code-quality/         ← ruff 린트/포맷 기준 (자동 감지)
-├── agents/
-│   ├── tester.md             ← 테스트 작성 전문
-│   ├── reviewer.md           ← 코드 리뷰 전문
-│   ├── architect.md          ← 아키텍처 설계 전문
-│   └── documenter.md         ← 문서화 전문
-├── commands/
-│   ├── tdd.md                ← /tdd → TDD 전체 루프
-│   ├── review.md             ← /review → 리뷰어 호출
-│   ├── doc.md                ← /doc → 문서화 호출
-│   └── commit.md             ← /commit → ruff+pytest+커밋
+.claude/
+├── CLAUDE.md                 ← 하네스 지도 (작업 흐름·금지 사항)
+├── settings.json             ← permissions.deny + PreToolUse 훅 등록
 ├── hooks/
-│   ├── post-write.ps1        ← 파일 저장 시 pytest 자동 실행
-│   └── on-stop.ps1           ← 응답 완료 후 ruff 자동 실행
-├── templates/
-│   ├── CLAUDE.md             ← 프로젝트 루트에 복사 후 수정
-│   └── TODO.md               ← 기능 폴더마다 복사 후 수정
-└── settings.json             ← hooks 설정
+│   ├── guard.py              ← 위험 명령·시크릿 접근 차단 (PreToolUse)
+│   └── test_guard.py         ← guard 차단/허용 테스트
+├── skills/                   ← 자연어로 자동 실행, /이름 으로도 호출 가능
+│   ├── tdd/                  ← SPEC 승인 → Red → Green → Refactor
+│   ├── review/               ← reviewer 에이전트로 리뷰 → TODO.md 기록
+│   ├── doc/                  ← docstring·README·API 문서
+│   ├── commit/               ← ruff + pytest + 로컬 커밋 (push 안 함)
+│   ├── scaffold/             ← 새 프로젝트 뼈대
+│   ├── api-conventions/      ← REST API 규칙 (참고 지식)
+│   └── code-quality/         ← ruff 기준 (참고 지식)
+├── agents/
+│   ├── builder.md            ← 설계 + 테스트 먼저 작성
+│   └── reviewer.md           ← 리뷰 + 문서화
+└── templates/                ← CLAUDE.md, FEATURE_SPEC/CLAUDE/TODO.md
 ```
 
 ## 새 프로젝트 시작
@@ -35,36 +32,32 @@
 ```bash
 git clone https://github.com/DataChuLee/Claude-Code-Setting.git my-project
 cd my-project
-rm -rf .git   # 기존 history 제거
-git init      # 새 프로젝트로 시작
+rm -rf .git && git init
 ```
 
-그 다음:
+그 다음 Claude Code에서 평소 말투로:
 ```
-1. .claude/templates/CLAUDE.md → 프로젝트 루트/CLAUDE.md 로 복사 후 수정
-2. .claude/templates/TODO.md → 기능 폴더/TODO.md 로 복사 후 수정
-3. Plan Mode (Shift+Tab) → 전체 피처 설계
-4. /tdd "첫 번째 기능" 으로 시작
+"my-project 프로젝트 세팅해줘"        → scaffold
+"문서 검색 기능 만들어줘"             → tdd (SPEC 초안 → 승인 → 테스트 → 구현)
+"리뷰해줘" / "문서화해줘" / "커밋해줘" → review / doc / commit
 ```
 
-## 명령어
+## 기능 폴더
 
-| 명령어 | 역할 |
-|--------|------|
-| `/tdd "기능명"` | TDD 전체 루프 (테스트 먼저 작성 → 구현 → 통과) |
-| `/review` | 완성된 코드 리뷰 |
-| `/doc` | docstring + README 문서화 |
-| `/commit` | ruff 체크 + pytest + git commit |
+```
+src/<기능>/
+├── SPEC.md    ← 요구사항·인수조건 (사람이 승인)
+├── CLAUDE.md  ← 기능 지도 (이 폴더 파일을 읽을 때 자동 로드)
+└── TODO.md    ← 작업 체크리스트·리뷰 기록
+```
 
-## Hooks 동작
+## 안전장치
 
-| 이벤트 | 스크립트 | 동작 |
-|--------|----------|------|
-| Write (Python 파일 저장) | post-write.ps1 | pytest 자동 실행 |
-| Stop (응답 완료) | on-stop.ps1 | ruff 체크 + 알림음 |
+| 층 | 무엇 | 막는 것 |
+|---|---|---|
+| 1 | `settings.json` deny | 흔한 형태의 위험 명령, 시크릿 파일 |
+| 2 | `guard.py` (PreToolUse) | 변형된 명령까지 문자열·현재 브랜치로 검사 |
+| 3 | GitHub 브랜치 보호 | 서버 측 최종 경계 (사용자가 직접 설정) |
 
-## 기술 스택 기준
-- Python 3.11+
-- pytest (테스트)
-- ruff (린트/포맷)
-- FastAPI (API, 선택)
+## 기술 스택
+Python 3.11+ · pytest · ruff · FastAPI(선택)

@@ -1,25 +1,25 @@
 name: my-dev-setup
-version: 1.1.0
-description: "TDD 자동화 + 코드 리뷰 + 문서화 — Python 스택 기준 (참고용 문서, Claude Code에서 자동 인식되지 않음)"
+version: 2.0.0
+description: "AI-Native 하네스 — SDD + TDD (+ LLM 프로젝트는 Eval). 참고용 문서, Claude Code에서 자동 인식되지 않음"
 author: qasd1
 
-# 실제 자동화는 settings.json(hooks)과 .claude/ 디렉토리 구조로 작동함
+# 실제 동작은 settings.json(permissions, hooks)과 .claude/ 디렉토리 구조로 이뤄짐
 # 이 파일은 구성 요소 목록을 파악하기 위한 참고 문서임
 
 components:
-  skills:
-    - skills/tdd-cycle
+  instructions:
+    - CLAUDE.md               # 하네스 지도
+  skills:                     # 자연어 자동 실행 + /이름 호출
+    - skills/tdd
+    - skills/review
+    - skills/doc
+    - skills/commit
+    - skills/scaffold
     - skills/api-conventions
     - skills/code-quality
   agents:
-    - agents/builder.md     # architect + tester 통합
-    - agents/reviewer.md    # reviewer + documenter 통합
-  commands:
-    - commands/init.md
-    - commands/tdd.md
-    - commands/review.md
-    - commands/doc.md
-    - commands/commit.md
+    - agents/builder.md       # 설계 + 테스트 먼저
+    - agents/reviewer.md      # 리뷰 + 문서화
   hooks:
-    - hooks/post-write.ps1  # Python 파일 저장 시 pytest 자동 실행
-    - hooks/on-stop.ps1     # 응답 완료 시 ruff 체크
+    - hooks/guard.py          # PreToolUse: 위험 명령·시크릿 차단
+  # Phase 2: 검증 게이트(Stop 훅), spec·eval 스킬 / Phase 3: ship 스킬
