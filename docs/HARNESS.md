@@ -143,7 +143,8 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 | 위험 명령 회귀 | Phase 1 테스트 전부 통과 + 실전 차단 확인 |
 | 이 세션 자체 (dogfooding) | 저장할 때마다 PostToolUse가 실제 실수(정의 전 호출, import 누락)를 즉시 잡음. 이 커밋도 reviewer 리뷰 후에만 가능 |
 | 리뷰 지적 우회 경로 (실전) | `bash -c "git push nonexistent main"` 차단, Write로 `.claude/state/review.json` 차단, `gate.py review-done` 직접 실행 차단, Read는 허용 |
-| 단위 테스트 | `python -m pytest` → 122 passed (`.claude/hooks` 포함) |
+| `/gate-reset` (사람이 직접 입력) | gate-log에 `result: reset` 기록, 재시도 횟수 0 → UserPromptExpansion 페이로드에 `command_name: "gate-reset"`이 실린다는 것을 실제로 확인 |
+| 단위 테스트 | `python -m pytest` → 125 passed (`.claude/hooks` 포함) |
 
 ### 알려진 한계
 - 문자열 검사: Python 스크립트 안에서 `subprocess`로 git을 부르면 guard가 못 본다 (임시 저장소 초기 커밋을 이렇게 만듦 — 테스트 준비 용도로만). 최종 경계는 GitHub 브랜치 보호
