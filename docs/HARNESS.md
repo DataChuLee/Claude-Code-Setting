@@ -49,7 +49,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 7. builder 에이전트가 옛 구조(레이어별 폴더, 루트 TODO.md)를 안내 → `src/<기능>/{SPEC,CLAUDE,TODO}.md`, SPEC 인수조건 ↔ 테스트 1:1로 수정
 
 ### 검증 결과
-**단위 테스트**: `python -m pytest .claude/hooks/test_guard.py -W error` → **67 passed**
+**단위 테스트**: `python -m pytest .claude/hooks/test_guard.py -W error` → **75 passed**
 
 **실전 시도 (이 세션, 2026-10-30)** — push는 존재하지 않는 remote 대상으로 시도해 안전 확보
 | 시도 | 결과 | 막은 층 |
