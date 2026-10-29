@@ -29,12 +29,12 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Read|Edit|Write|NotebookEdit|Grep",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
             "command": "python",
-            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/guard.py"],
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/run_guard.py"],
             "onFailure": "block"
           }
         ]

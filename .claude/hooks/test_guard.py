@@ -10,7 +10,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 from guard import check_command, check_path  # noqa: E402
 
-GUARD = Path(__file__).parent / "guard.py"
+HOOKS = Path(__file__).parent
+GUARD = HOOKS / "run_guard.py"  # 훅 진입점 (guard.py를 불러 판정)
 
 BLOCKED = [
     # main 직접 push
@@ -172,3 +173,60 @@ def test_hook_blocks_on_unreadable_input():
         encoding="utf-8",
     )
     assert result.returncode == 2
+
+
+def _deny(result: subprocess.CompletedProcess) -> str | None:
+    if not result.stdout:
+        return None
+    out = json.loads(result.stdout)["hookSpecificOutput"]
+    return (
+        out["permissionDecisionReason"] if out["permissionDecision"] == "deny" else None
+    )
+
+
+def test_any_tool_with_command_is_checked():
+    # matcher "*": Monitor처럼 셸을 실행하는 도구도 command 필드로 검사
+    result = _run_hook(
+        {"tool_name": "Monitor", "tool_input": {"command": "gh pr merge 1"}}
+    )
+    assert _deny(result)
+
+
+def test_tool_without_command_or_path_is_allowed():
+    result = _run_hook({"tool_name": "WebSearch", "tool_input": {"query": "pytest"}})
+    assert _deny(result) is None
+
+
+def _broken_hooks(tmp_path: Path) -> Path:
+    (tmp_path / "run_guard.py").write_text(
+        GUARD.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (tmp_path / "guard.py").write_text("def broken(:\n", encoding="utf-8")
+    return tmp_path
+
+
+def _run_broken(hooks: Path, payload: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(hooks / "run_guard.py")],
+        input=json.dumps(payload),
+        capture_output=True,
+        encoding="utf-8",
+    )
+
+
+def test_broken_guard_still_allows_repairing_guard(tmp_path):
+    hooks = _broken_hooks(tmp_path)
+    payload = {
+        "tool_name": "Edit",
+        "tool_input": {"file_path": str(hooks / "guard.py")},
+    }
+    assert _deny(_run_broken(hooks, payload)) is None
+
+
+def test_broken_guard_blocks_everything_else(tmp_path):
+    hooks = _broken_hooks(tmp_path)
+    for payload in (
+        {"tool_name": "Bash", "tool_input": {"command": "git status"}},
+        {"tool_name": "Edit", "tool_input": {"file_path": str(hooks / "other.py")}},
+    ):
+        assert "고장" in (_deny(_run_broken(hooks, payload)) or "")

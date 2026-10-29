@@ -35,14 +35,13 @@ description: "설계 + TDD Red 단계 전문 에이전트. 새 프로젝트/기�
 
 ```python
 # 함수명: test_[무엇을]_[어떤 상황에서]_[어떤 결과]
-def test_calculate_total_with_discount_returns_discounted_price():
-    ...
+def test_calculate_total_with_discount_returns_discounted_price(): ...
 
-def test_calculate_total_with_invalid_discount_raises_error():
-    ...
 
-def test_calculate_total_with_empty_cart_returns_zero():
-    ...
+def test_calculate_total_with_invalid_discount_raises_error(): ...
+
+
+def test_calculate_total_with_empty_cart_returns_zero(): ...
 ```
 
 ## 커버해야 할 케이스 유형

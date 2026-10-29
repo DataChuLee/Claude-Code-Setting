@@ -59,6 +59,7 @@ known-first-party = ["src"]
 def get_user(user_id):
     pass
 
+
 # ✅ 타입 명시
 def get_user(user_id: int) -> dict | None:
     pass
@@ -83,14 +84,19 @@ from src.utils import hash_password
 ```python
 # 변수/함수: snake_case
 user_name = "홍길동"
+
+
 def get_user_by_id(user_id: int): ...
+
 
 # 클래스: PascalCase
 class UserService: ...
 
+
 # 상수: UPPER_SNAKE_CASE
 MAX_RETRY_COUNT = 3
 DATABASE_URL = "postgresql://..."
+
 
 # Private: 언더스코어 prefix
 def _internal_helper(): ...

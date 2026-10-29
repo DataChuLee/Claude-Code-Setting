@@ -1,17 +1,13 @@
-"""PreToolUse 훅: PLAN.md "절대 하지 말 것"을 강제한다.
+"""PLAN.md "절대 하지 말 것" 판정 규칙. 훅 진입점(입출력·고장 처리)은 run_guard.py.
 
-stdin으로 훅 입력 JSON을 받아, 막아야 하면 permissionDecision "deny"를 출력한다.
-입력을 읽지 못하면 exit 2로 차단한다 (fail closed).
+decide(payload)가 차단 이유를 돌려주면 run_guard.py가 deny로 응답한다.
 """
 
-import json
 import re
 import shlex
 import subprocess
-import sys
 from pathlib import PurePath
 
-PREFIX = "[harness-guard] "
 PROTECTED_BRANCHES = {"main", "master"}
 SECRET_NAMES = {"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"}
 SECRET_SUFFIXES = {".pem", ".key"}
@@ -162,39 +158,18 @@ def _current_branch(cwd: str | None) -> str:
         return ""
 
 
-def main() -> int:
-    # Claude Code는 UTF-8로 주고받는데 Windows 기본은 cp949라 한글이 깨짐
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        stream.reconfigure(encoding="utf-8")
-    try:
-        payload = json.loads(sys.stdin.read())
-        tool = payload.get("tool_name", "")
-        tool_input = payload.get("tool_input") or {}
-    except (json.JSONDecodeError, AttributeError) as e:
-        print(f"{PREFIX}훅 입력을 읽지 못해 차단합니다: {e}", file=sys.stderr)
-        return 2
+def decide(payload: dict) -> str | None:
+    """훅 입력 하나를 판정한다. 도구 이름이 아니라 입력 형태로 본다 (matcher "*").
 
-    if tool in ("Bash", "PowerShell"):
-        reason = check_command(
-            tool_input.get("command", ""), _current_branch(payload.get("cwd"))
-        )
-    else:
-        path = (
-            tool_input.get("file_path")
-            or tool_input.get("notebook_path")
-            or tool_input.get("path")
-        )
-        reason = check_path(path) if path else None
-
-    if reason:
-        decision = {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": PREFIX + reason,
-        }
-        print(json.dumps({"hookSpecificOutput": decision}, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    command가 있으면 셸 명령(Bash·PowerShell·Monitor 등), 경로가 있으면 파일 접근으로 검사.
+    """
+    tool_input = payload.get("tool_input") or {}
+    command = tool_input.get("command")
+    if isinstance(command, str):
+        return check_command(command, _current_branch(payload.get("cwd")))
+    path = (
+        tool_input.get("file_path")
+        or tool_input.get("notebook_path")
+        or tool_input.get("path")
+    )
+    return check_path(path) if isinstance(path, str) else None
