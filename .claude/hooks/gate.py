@@ -4,7 +4,7 @@
   stop        Stop: 바뀐 .py가 있으면 pytest·ruff·mypy·TODO 검사. 실패 시 2회까지 되돌려 보내고 3번째에 멈춤
   reset       UserPromptExpansion(/gate-reset): 사람이 직접 입력했을 때만 재시도 횟수 초기화
   post-edit   PostToolUse(Edit|Write): 저장한 .py에 ruff만 빠르게, 실패 시 exit 2로 Claude에게 전달
-  review-done PostToolUse(SubagentHandback): reviewer 보고서가 "승인"이면 그 시점의 변경 해시 기록 → guard가 커밋 전에 대조
+  review-done PostToolUse(SubagentHandback)·SubagentStop(reviewer): reviewer 보고서가 "승인"이면 그 시점의 변경 해시 기록 → guard가 커밋 전에 대조
 """
 
 import hashlib
@@ -242,6 +242,13 @@ def review_done(payload: dict, root: Path) -> None:
         or ""
     )
     if not summary.strip():
+        return
+    # auto 모드에서는 Handback 뒤 SubagentStop이 맺음말만 들고 온다 → 판정 줄이 없으면 앞 기록 유지
+    # (CI처럼 Handback이 없으면 SubagentStop의 마지막 텍스트가 보고서 자체다)
+    if (
+        payload.get("hook_event_name") == "SubagentStop"
+        and "승인 가능 여부" not in summary
+    ):
         return
     rejected = not _approved(summary)
     record = {

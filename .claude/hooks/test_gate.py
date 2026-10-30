@@ -235,6 +235,36 @@ def test_review_report_comes_from_handback_message(repo):
     assert not gate.review_matches(repo)
 
 
+def _subagent_stop(text: str) -> dict:
+    return {
+        "hook_event_name": "SubagentStop",
+        "agent_type": "reviewer",
+        "last_assistant_message": text,
+    }
+
+
+def test_review_report_comes_from_subagent_stop_without_handback(repo):
+    # CI(-p, auto 모드 아님)에는 SubagentHandback이 없어 보고서가 마지막 텍스트로 온다
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+    gate.review_done(_subagent_stop("## 결과\n승인 가능 여부: ✅ 승인"), repo)
+    assert gate.review_matches(repo)
+
+
+def test_closing_text_without_verdict_does_not_overwrite_handback(repo):
+    # 로컬(auto 모드)에서는 Handback 뒤에 SubagentStop이 맺음말만 들고 온다
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+    gate.review_done(_handback("승인 가능 여부: ✅ 승인"), repo)
+    gate.review_done(_subagent_stop("보고서를 전달했습니다."), repo)
+    assert gate.review_matches(repo)
+
+
+def test_subagent_stop_rejection_with_verdict_is_recorded(repo):
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+    gate.review_done(_handback("승인 가능 여부: ✅ 승인"), repo)
+    gate.review_done(_subagent_stop("🔴 버그\n승인 가능 여부: ❌ 수정 후 재검토"), repo)
+    assert not gate.review_matches(repo)
+
+
 def test_every_review_round_is_logged_for_pr_body(repo):
     (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
     gate.review_done(_handback("🔴 버그\n승인 가능 여부: ❌ 수정 후 재검토"), repo)
