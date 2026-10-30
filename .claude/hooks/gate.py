@@ -232,8 +232,9 @@ def _approved(report: str) -> bool:
 
 
 def review_done(payload: dict, root: Path) -> None:
-    """reviewer의 보고서로 리뷰 기록. 보고서는 SubagentHandback(tool_input.message)으로 오고,
-    SubagentStop의 last_assistant_message는 맺음말뿐일 수 있다(공식 문서) → 빈 보고서는 무시."""
+    """reviewer의 보고서로 리뷰 기록. 보고서는 auto 모드면 SubagentHandback의 tool_input.message,
+    그 외(CI의 -p)면 SubagentStop의 last_assistant_message로 온다. Handback 뒤의 SubagentStop은
+    맺음말뿐일 수 있다(공식 문서) → 빈 보고서와 판정 줄 없는 SubagentStop은 무시."""
     if payload.get("agent_type") != "reviewer":
         return
     summary = str(
