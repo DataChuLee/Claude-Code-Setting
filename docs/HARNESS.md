@@ -278,6 +278,8 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
    - 남은 가설: tdd 스킬이 `ruff`를 `python -m` 없이 불러 CI 허용 목록에 걸림(→ 고침), reviewer 미승인으로 commit 차단, 게이트 에스컬레이션. 16턴이면 ship 전에 멈췄을 가능성이 높다 → 다음 실행의 진단 출력으로 확정
    - 조사 중 확인한 확실한 버그: `ship`은 PR 본문을 `.claude/tmp/pr-body.md`에 Write로 쓰는데, `.claude/`는 보호 경로라 CI에서는 반드시 거부된다(실패 8과 같은 원인) → 본문 경로를 `tmp/pr-body.md`(gitignore)로 옮김
    - **3차(12턴, $0.27)에서 진단 단계로 원인 확정**: 마지막 답변이 "reviewer를 시작했고 결과를 기다리는 중". Agent 도구는 `run_in_background`를 생략하면 서브에이전트를 **백그라운드**로 띄운다(Agent SDK subagents 문서, v2.1.198부터). `-p` 실행은 메인 턴이 끝나면 세션도 끝나 리뷰 결과가 돌아오지 않았다. headless 문서에는 백그라운드 작업 대기 상한(`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`)이 있지만 이 경로에서는 동작하지 않은 것으로 보인다(claude-code 이슈 #73453과 같은 증상). 로컬에서는 결과 알림이 다음 턴을 깨워 문제가 없었다 → build·fix의 action env에 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (Agent 도구에서 `run_in_background`가 사라져 항상 결과를 받고 진행). 2차의 16턴도 같은 원인으로 보인다(그때는 진단이 없어 확정 불가)
+   - **4차(37턴, $0.56)**: reviewer가 포그라운드로 돌아 승인 2회, pytest 206개 통과까지 갔지만 **커밋에서 guard가 "리뷰 필요"로 차단**. 리뷰 기록 훅이 `PostToolUse(SubagentHandback)`에만 걸려 있었는데, `SubagentHandback` 도구는 **auto 모드에서만** 제공된다(hooks 문서). 로컬은 auto 모드라 동작했고 CI(`-p`)에서는 보고서가 서브에이전트의 마지막 텍스트로 와서 기록되지 않았다 → `SubagentStop`(matcher `reviewer`)에도 `review-done`을 걸고, auto 모드에서 Handback 뒤 오는 맺음말이 승인을 덮어쓰지 않게 SubagentStop은 판정 줄이 있을 때만 기록 (테스트 3개, 덮어쓰기는 먼저 실패 확인). 에이전트는 상태 파일을 만들거나 guard를 고치지 않고 이유를 이슈에 남기고 멈췄다 — 우회하지 않는 것이 의도한 동작
+   - 교훈: 로컬과 CI는 **권한 모드가 달라 쓸 수 있는 도구가 다르다**. 훅이 특정 도구 이름에 걸려 있으면 그 도구가 모든 모드에 있는지 확인한다
    - 교훈: 실패 5의 "성공했는데 아무 일도 안 함"이 다시 나왔다. 에이전트가 멈출 수 있는 모든 경로에서 **이유가 사람에게 보이는지**를 설계 때 확인한다 (프롬프트의 "멈추면 댓글"은 모델이 지킬 때만 동작)
 
 ### 검증 (실전, PR #2)

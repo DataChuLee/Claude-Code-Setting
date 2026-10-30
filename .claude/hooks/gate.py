@@ -4,7 +4,7 @@
   stop        Stop: 바뀐 .py가 있으면 pytest·ruff·mypy·TODO 검사. 실패 시 2회까지 되돌려 보내고 3번째에 멈춤
   reset       UserPromptExpansion(/gate-reset): 사람이 직접 입력했을 때만 재시도 횟수 초기화
   post-edit   PostToolUse(Edit|Write): 저장한 .py에 ruff만 빠르게, 실패 시 exit 2로 Claude에게 전달
-  review-done PostToolUse(SubagentHandback): reviewer 보고서가 "승인"이면 그 시점의 변경 해시 기록 → guard가 커밋 전에 대조
+  review-done PostToolUse(SubagentHandback)·SubagentStop(reviewer): reviewer 보고서가 "승인"이면 그 시점의 변경 해시 기록 → guard가 커밋 전에 대조
 """
 
 import hashlib
@@ -217,13 +217,18 @@ def reset(payload: dict, root: Path) -> None:
     _log(root, session=payload.get("session_id"), result="reset")
 
 
-def _approved(report: str) -> bool:
-    """reviewer 출력의 마지막 '승인 가능 여부:' 줄이 '✅ 승인'으로 시작하고 ❌가 없을 때만 승인."""
-    verdicts = [
+def _verdicts(report: str) -> list[str]:
+    """'승인 가능 여부:'로 시작하는 판정 줄의 콜론 뒤 부분들."""
+    return [
         line.split(":", 1)[1]
         for line in report.splitlines()
         if line.strip().lstrip("#*- ").startswith("승인 가능 여부") and ":" in line
     ]
+
+
+def _approved(report: str) -> bool:
+    """reviewer 출력의 마지막 '승인 가능 여부:' 줄이 '✅ 승인'으로 시작하고 ❌가 없을 때만 승인."""
+    verdicts = _verdicts(report)
     if not verdicts:
         return False
     # 정확한 승인 형식만 인정 ("승인 불가"·"미승인"도 '승인' 글자를 포함하므로 포함 여부로 보면 안 됨)
@@ -232,8 +237,9 @@ def _approved(report: str) -> bool:
 
 
 def review_done(payload: dict, root: Path) -> None:
-    """reviewer의 보고서로 리뷰 기록. 보고서는 SubagentHandback(tool_input.message)으로 오고,
-    SubagentStop의 last_assistant_message는 맺음말뿐일 수 있다(공식 문서) → 빈 보고서는 무시."""
+    """reviewer의 보고서로 리뷰 기록. 보고서는 auto 모드면 SubagentHandback의 tool_input.message,
+    그 외(CI의 -p)면 SubagentStop의 last_assistant_message로 온다. Handback 뒤의 SubagentStop은
+    맺음말뿐일 수 있다(공식 문서) → 빈 보고서와 판정 줄 없는 SubagentStop은 무시."""
     if payload.get("agent_type") != "reviewer":
         return
     summary = str(
@@ -242,6 +248,10 @@ def review_done(payload: dict, root: Path) -> None:
         or ""
     )
     if not summary.strip():
+        return
+    # auto 모드에서는 Handback 뒤 SubagentStop이 맺음말만 들고 온다 → 판정 줄이 없으면 앞 기록 유지
+    # (CI처럼 Handback이 없으면 SubagentStop의 마지막 텍스트가 보고서 자체다)
+    if payload.get("hook_event_name") == "SubagentStop" and not _verdicts(summary):
         return
     rejected = not _approved(summary)
     record = {
