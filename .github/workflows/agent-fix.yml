@@ -63,6 +63,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: 샌드박스 런타임 설치
+        # ENV_SCRUB=1이면 모든 명령이 bubblewrap 샌드박스에서 돈다. action은 allowed_non_write_users일 때만 설치하므로 직접 설치
+        run: |
+          for i in 1 2 3; do  # apt 미러 일시 장애 대비 (action과 같은 3회)
+            sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends bubblewrap socat && break
+            [ "$i" = 3 ] && exit 1
+            sleep 5
+          done
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
       - uses: anthropics/claude-code-action@v1
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"  # 에이전트가 쓴 테스트·훅이 OAuth 토큰을 읽지 못하게
