@@ -74,6 +74,22 @@ BLOCKED = [
     ("gh secret set OPENAI_API_KEY", "feature"),
     # 자동 머지
     ("gh pr merge 3 --squash", "feature"),
+    # push는 agent/* 브랜치만, PR은 draft만 (Phase 3)
+    ("git push origin feature-x", "agent/1-x"),
+    ("git push", "feature"),
+    ("git push origin agent/1-x:main", "agent/1-x"),
+    ("git push origin agent/1-x:release", "agent/1-x"),
+    ("git push origin --delete feature", "agent/1-x"),
+    ("gh pr create --title x --body-file b.md", "agent/1-x"),
+    # Phase 3 리뷰 지적: 모든 브랜치 push, gh 별칭, ready 전환, draft 값 뒤집기
+    ("git push --all origin", "agent/1-x"),
+    ("git push --mirror origin", "agent/1-x"),
+    ("git push --branches origin", "agent/1-x"),
+    ("gh pr new --title x", "agent/1-x"),
+    ("gh pr ready 1", "agent/1-x"),
+    ("gh alias set pc 'pr create'", "agent/1-x"),
+    ("gh pr create --draft --draft=false --title x", "agent/1-x"),
+    ('"C:\\Program Files\\GitHub CLI\\gh.exe" pr create --title x', "agent/1-x"),
 ]
 
 ALLOWED = [
@@ -92,6 +108,12 @@ ALLOWED = [
     ("echo hello", "main"),
     ("python -m pytest", "main"),
     ("gh pr create --draft --title x", "agent/1-x"),
+    (
+        "gh pr create -d --base main --title x --body-file .claude/tmp/pr-body.md",
+        "agent/1-x",
+    ),
+    ("git push origin agent/1-x:agent/1-x", "agent/1-x"),
+    ("git push origin --delete agent/1-x", "main"),
     ("gh pr view 3", "feature"),
     ("env FOO=1 python app.py", "feature"),
     ("python -c \"print('hello')\"", "feature"),

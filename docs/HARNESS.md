@@ -161,3 +161,44 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `pull`·`rebase`는 리뷰 대상이 아님
 - 중첩 저장소(`sample-automation/`처럼 자체 `.git`)에서는 리뷰 기록이 세션 저장소에 쓰여 그 저장소 커밋이 막힘 → 중첩 저장소는 두지 않는다 (삭제 예정)
 - `cd` 추적은 `Set-Location -Path X`, `$VAR`, `~`를 해석하지 못함 (모르면 차단 쪽)
+
+---
+
+## Phase 3. PR 자동화 (ship 스킬) — 2026-10-30
+
+### 만든 것
+- `.claude/skills/ship/SKILL.md` — 브랜치 확인 → (commit) → 검사 재실행 → 본문 작성 → push → draft PR (있으면 본문 갱신)
+- `.github/pull_request_template.md` — 6개 항목: 변경 이유(이슈) · 핵심 변경 · 테스트와 결과 · 확인 못 한 부분 · 위험 지점 · 리뷰 지적과 반영
+- guard: push 대상은 `agent/*`만, `gh pr create`는 `--draft`/`-d` 필수
+- gate: 리뷰가 끝날 때마다 `gate-log.jsonl`에 `review-approved|review-rejected` + 보고서 기록
+
+### 설계
+| 결정 | 이유 |
+|---|---|
+| push 허용을 "main 금지"에서 "`agent/*`만 허용"으로 좁힘 | 금지 목록은 새 브랜치 이름(release 등)을 놓친다. 허용 목록이 최소 권한. Phase 4 루프 토큰도 같은 범위 |
+| draft를 훅으로 강제 | PLAN 원칙 "말이 아니라 훅". 스킬 문구만으로는 모델이 `--draft`를 빠뜨릴 수 있다 |
+| `gh pr ready`도 차단 (계획에선 안 막기로 했다가 리뷰 후 변경) | "ready 전환은 사람이"를 말로만 두면 Phase 2에서 고친 것과 같은 부류의 구멍. 사람은 웹·자기 터미널에서 하면 됨 |
+| 리뷰 이력은 기존 `_log()`에 한 줄 추가 | `review.json`은 마지막 리뷰만 남아 "거절 → 수정 → 승인" 과정을 PR에 쓸 근거가 없었음. 새 파일 대신 기존 로그 재사용, Phase 5 원재료 |
+| 본문 임시 파일 `.claude/tmp/pr-body.md` (gitignore) | Write 도구로 쓰면 셸 heredoc 오탐(본문 속 `.env`·`git commit` 글자)이 없음. CI에서도 같은 경로 |
+| 검사를 ship에서 다시 실행 | 본문의 "테스트 결과"는 실제 실행 결과 줄이어야 한다. 기억이나 Stop 게이트 통과 사실로 대신하지 않음 |
+| 이슈 없음 = 번호 0 | 로컬 작업용. Phase 4에서는 항상 이슈 번호가 있음 |
+
+### 검증
+| 시도 | 결과 |
+|---|---|
+| 단위 테스트 (먼저 작성 → 7개 실패 확인 → 구현, 리뷰 지적분도 7개 실패 확인 → 수정) | `python -m pytest` → 143 passed |
+| 실전: `git push origin feature-x` | 차단 "push 는 agent/<이슈번호>-<요약> 브랜치에만" |
+| 실전: draft 없이 `gh.exe pr create` (전체 경로) | 차단 "PR 은 draft 로만" |
+| 실전: `git push origin HEAD:main` | 차단 "main 직접 push 는 금지" |
+
+### 겪은 실패와 해결
+1. **리뷰 1차 🔴: `git push --all origin`·`--mirror`가 통과** — refspec이 없으면 대상을 현재 브랜치(agent/…)로만 봤는데, 실제로는 main 포함 모든 브랜치를 올림(`--mirror`는 강제 갱신·삭제까지). `--all`/`--mirror`/`--branches` 차단
+2. **리뷰 1차 🔴: `gh pr new`가 통과** — `new`는 `create`의 공식 별칭. 둘 다 검사
+3. 같은 리뷰의 🟡💡도 반영: `gh pr ready`·`gh alias set` 차단, `--draft --draft=false`(gh는 마지막 값 사용) 차단, PR 본문에 리뷰 원문 대신 요약
+   - 교훈: 허용 목록으로 바꿔도 "명령이 실제로 무엇을 건드리는가"(--all)와 "같은 명령의 다른 이름"(별칭)은 따로 봐야 한다
+
+### 알려진 한계
+- 리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환
+- heredoc 본문 속 명령 문자열(`gh pr new` 등)도 guard가 실제 명령으로 보고 막는다 (보수적 동작). 테스트 데이터는 파일 도구로 넘긴다
+- guard는 **명령줄 인자만** 본다: `git -c push.default=upstream push`, `git branch -u origin/main` 후 `git push`, `remote.origin.push` 설정으로 대상 바꾸기, `gh api repos/o/r/pulls`로 draft 아닌 PR 만들기는 못 막음 → 최종 경계는 GitHub Ruleset과 사람 머지
+- 이 브랜치의 Phase 1~2 리뷰(1~4차)는 리뷰 로그 도입 전이라 PR #1 본문은 이 문서 기록을 근거로 작성

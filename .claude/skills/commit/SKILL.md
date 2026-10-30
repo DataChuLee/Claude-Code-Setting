@@ -21,5 +21,5 @@ argument-hint: "[커밋 메시지]"
 `feat|fix|refactor|test|docs|chore: 설명` — 예: `feat: 문서 검색 API 추가`
 
 ## 하지 않는 것
-- `git push` — main 직접 push 금지. push와 draft PR은 `ship` 스킬(Phase 3)이 담당
+- `git push` — push와 draft PR은 `ship` 스킬이 담당
 - `--no-verify` — 훅이 차단함

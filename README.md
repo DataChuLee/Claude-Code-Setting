@@ -23,6 +23,7 @@ AI-Native Development 하네스 템플릿 (Python).
 │   ├── review/               ← reviewer 에이전트로 리뷰 → TODO.md 기록
 │   ├── doc/                  ← docstring·README·API 문서
 │   ├── commit/               ← ruff + pytest + 로컬 커밋 (push 안 함)
+│   ├── ship/                 ← agent/* 브랜치 push → draft PR (머지는 사람)
 │   ├── scaffold/             ← 새 프로젝트 뼈대
 │   ├── api-conventions/      ← REST API 규칙 (참고 지식)
 │   └── code-quality/         ← ruff 기준 (참고 지식)
@@ -45,6 +46,7 @@ rm -rf .git && git init
 "my-project 프로젝트 세팅해줘"        → scaffold
 "문서 검색 기능 만들어줘"             → tdd (SPEC 초안 → 승인 → 테스트 → 구현)
 "리뷰해줘" / "문서화해줘" / "커밋해줘" → review / doc / commit
+"PR 올려줘"                          → ship (draft PR, 본문은 .github/pull_request_template.md)
 ```
 
 ## 기능 폴더
@@ -63,6 +65,7 @@ src/<기능>/
 | .py 저장 직후 | ruff | 즉시 Claude에게 오류 전달 |
 | 응답 종료 시 | pytest · ruff · mypy · 기능 TODO.md 갱신 | 2회까지 되돌려 고치게 함, 3번째엔 멈추고 사람 호출 (`/gate-reset`) |
 | 커밋 시 | reviewer가 본 코드 = 지금 코드 | 커밋 차단 |
+| push·PR 시 | 대상이 `agent/*` 브랜치, PR은 `--draft` | 차단 |
 
 ## 안전장치
 

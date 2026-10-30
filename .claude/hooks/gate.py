@@ -216,7 +216,7 @@ def reset(payload: dict, root: Path) -> None:
 
 
 def _approved(report: str) -> bool:
-    """reviewer 출력의 '승인 가능 여부:' 줄로 판정. 줄이 없거나 재검토·❌가 있으면 거절."""
+    """reviewer 출력의 마지막 '승인 가능 여부:' 줄이 '✅ 승인'으로 시작하고 ❌가 없을 때만 승인."""
     verdicts = [
         line.split(":", 1)[1]
         for line in report.splitlines()
@@ -251,6 +251,12 @@ def review_done(payload: dict, root: Path) -> None:
     }
     (_state_dir(root) / "review.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    # review.json은 마지막 리뷰만 남으므로, 라운드별 지적은 로그에 쌓아 PR 본문(ship)에 쓴다
+    _log(
+        root,
+        result="review-rejected" if rejected else "review-approved",
+        summary=record["summary"],
     )
 
 

@@ -17,6 +17,7 @@ components:
     - skills/review
     - skills/doc
     - skills/commit
+    - skills/ship             # push + draft PR
     - skills/scaffold
     - skills/api-conventions
     - skills/code-quality
@@ -27,4 +28,5 @@ components:
     - hooks/run_guard.py      # PreToolUse 진입점
     - hooks/guard.py          # 위험 명령·시크릿·리뷰 없는 커밋 차단
     - hooks/gate.py           # Stop 게이트·PostToolUse ruff·SubagentHandback 리뷰 기록·/gate-reset
-  # Phase 3: ship 스킬
+  github:
+    - ../.github/pull_request_template.md   # PR 본문 6개 항목 (ship이 채움)

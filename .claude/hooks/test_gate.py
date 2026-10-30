@@ -235,6 +235,16 @@ def test_review_report_comes_from_handback_message(repo):
     assert not gate.review_matches(repo)
 
 
+def test_every_review_round_is_logged_for_pr_body(repo):
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+    gate.review_done(_handback("🔴 버그\n승인 가능 여부: ❌ 수정 후 재검토"), repo)
+    gate.review_done(_handback("승인 가능 여부: ✅ 승인"), repo)
+    log = (repo / ".claude" / "state" / "gate-log.jsonl").read_text(encoding="utf-8")
+    rounds = [json.loads(line) for line in log.splitlines()]
+    assert [r["result"] for r in rounds] == ["review-rejected", "review-approved"]
+    assert "🔴 버그" in rounds[0]["summary"]
+
+
 def test_only_reviewer_can_record_review(repo):
     (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
     gate.review_done(

@@ -108,8 +108,13 @@ def _check_git(tokens: list[str], branch: str) -> str | None:
     ):
         return "force push 는 금지입니다"
     # 브랜치를 알 수 없으면(detached 등) 보호 브랜치로 간주
-    if any(t in PROTECTED_BRANCHES or t == "" for t in _push_targets(args, branch)):
+    if {"--all", "--mirror", "--branches"} & set(args):
+        return "모든 브랜치 push(--all/--mirror/--branches)는 금지입니다. agent/ 브랜치 하나만 push 하세요"
+    targets = _push_targets(args, branch)
+    if any(t in PROTECTED_BRANCHES or t == "" for t in targets):
         return "main 직접 push 는 금지입니다. agent/<이슈번호>-<요약> 브랜치에서 PR로 올리세요"
+    if any(not t.startswith("agent/") for t in targets):
+        return "push 는 agent/<이슈번호>-<요약> 브랜치에만 할 수 있습니다"
     return None
 
 
@@ -117,8 +122,16 @@ def _check_gh(tokens: list[str], segment: str) -> str | None:
     sub = tokens[1:3]
     if sub == ["auth", "token"]:
         return "토큰을 출력할 수 없습니다"
-    if sub == ["pr", "merge"]:
-        return "자동 머지는 금지입니다. 머지는 사람이 합니다"
+    if sub in (["pr", "merge"], ["pr", "ready"]):
+        return "머지와 ready 전환은 사람이 합니다"
+    if sub == ["alias", "set"]:
+        return "gh alias 정의로 검사를 피할 수 없습니다"
+    is_create = sub in (["pr", "create"], ["pr", "new"])  # new는 create의 공식 별칭
+    if is_create and (
+        not {"--draft", "-d"} & set(tokens)
+        or any(t.startswith("--draft=") for t in tokens)
+    ):
+        return "PR 은 draft 로만 만듭니다 (--draft). ready 전환과 머지는 사람이 합니다"
     if sub[:1] == ["secret"]:
         return "GitHub Secrets 는 사용자가 직접 등록합니다"
     if sub == ["repo", "edit"] or (
