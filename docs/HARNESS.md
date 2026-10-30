@@ -190,6 +190,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 | 실전: `git push origin feature-x` | 차단 "push 는 agent/<이슈번호>-<요약> 브랜치에만" |
 | 실전: draft 없이 `gh.exe pr create` (전체 경로) | 차단 "PR 은 draft 로만" |
 | 실전: `git push origin HEAD:main` | 차단 "main 직접 push 는 금지" |
+| **실전 ship → PR #1** | `git push -u origin agent/0-phase1-harness 2>&1` 통과(오탐 수정 후) → `gh pr create --draft` → https://github.com/DataChuLee/Claude-Code-Setting/pull/1 · 조회 결과 `isDraft: true`, base `main`, 커밋 9개, 본문 6개 섹션 모두 존재. 머지는 사용자 |
 
 ### 겪은 실패와 해결
 1. **리뷰 1차 🔴: `git push --all origin`·`--mirror`가 통과** — refspec이 없으면 대상을 현재 브랜치(agent/…)로만 봤는데, 실제로는 main 포함 모든 브랜치를 올림(`--mirror`는 강제 갱신·삭제까지). `--all`/`--mirror`/`--branches` 차단
