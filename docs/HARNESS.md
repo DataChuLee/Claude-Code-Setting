@@ -277,6 +277,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
    - 진단 출력은 모델 출력이라 `::stop-commands::`로 워크플로 명령 해석을 끄고, 게이트 에스컬레이션(`continue:false`는 result에 안 남을 수 있음)을 보려고 gate-log의 block/escalate 줄(검사 이름만)도 출력 (reviewer 🟡)
    - 남은 가설: tdd 스킬이 `ruff`를 `python -m` 없이 불러 CI 허용 목록에 걸림(→ 고침), reviewer 미승인으로 commit 차단, 게이트 에스컬레이션. 16턴이면 ship 전에 멈췄을 가능성이 높다 → 다음 실행의 진단 출력으로 확정
    - 조사 중 확인한 확실한 버그: `ship`은 PR 본문을 `.claude/tmp/pr-body.md`에 Write로 쓰는데, `.claude/`는 보호 경로라 CI에서는 반드시 거부된다(실패 8과 같은 원인) → 본문 경로를 `tmp/pr-body.md`(gitignore)로 옮김
+   - **3차(12턴, $0.27)에서 진단 단계로 원인 확정**: 마지막 답변이 "reviewer를 시작했고 결과를 기다리는 중". Agent 도구는 `run_in_background`를 생략하면 서브에이전트를 **백그라운드**로 띄운다(Agent SDK subagents 문서, v2.1.198부터). `-p` 실행은 메인 턴이 끝나면 세션도 끝나 리뷰 결과가 돌아오지 않았다. headless 문서에는 백그라운드 작업 대기 상한(`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`)이 있지만 이 경로에서는 동작하지 않은 것으로 보인다(claude-code 이슈 #73453과 같은 증상). 로컬에서는 결과 알림이 다음 턴을 깨워 문제가 없었다 → build·fix의 action env에 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (Agent 도구에서 `run_in_background`가 사라져 항상 결과를 받고 진행). 2차의 16턴도 같은 원인으로 보인다(그때는 진단이 없어 확정 불가)
    - 교훈: 실패 5의 "성공했는데 아무 일도 안 함"이 다시 나왔다. 에이전트가 멈출 수 있는 모든 경로에서 **이유가 사람에게 보이는지**를 설계 때 확인한다 (프롬프트의 "멈추면 댓글"은 모델이 지킬 때만 동작)
 
 ### 검증 (실전, PR #2)
