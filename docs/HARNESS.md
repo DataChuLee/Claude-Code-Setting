@@ -186,7 +186,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 ### 검증
 | 시도 | 결과 |
 |---|---|
-| 단위 테스트 (먼저 작성 → 7개 실패 확인 → 구현, 리뷰 지적분도 7개 실패 확인 → 수정) | `python -m pytest` → 143 passed |
+| 단위 테스트 (먼저 작성 → 7개 실패 확인 → 구현, 리뷰 지적분도 7개 실패 확인 → 수정) | `python -m pytest` → 153 passed |
 | 실전: `git push origin feature-x` | 차단 "push 는 agent/<이슈번호>-<요약> 브랜치에만" |
 | 실전: draft 없이 `gh.exe pr create` (전체 경로) | 차단 "PR 은 draft 로만" |
 | 실전: `git push origin HEAD:main` | 차단 "main 직접 push 는 금지" |
@@ -195,9 +195,15 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 1. **리뷰 1차 🔴: `git push --all origin`·`--mirror`가 통과** — refspec이 없으면 대상을 현재 브랜치(agent/…)로만 봤는데, 실제로는 main 포함 모든 브랜치를 올림(`--mirror`는 강제 갱신·삭제까지). `--all`/`--mirror`/`--branches` 차단
 2. **리뷰 1차 🔴: `gh pr new`가 통과** — `new`는 `create`의 공식 별칭. 둘 다 검사
 3. 같은 리뷰의 🟡💡도 반영: `gh pr ready`·`gh alias set` 차단, `--draft --draft=false`(gh는 마지막 값 사용) 차단, PR 본문에 리뷰 원문 대신 요약
+4. **ship 첫 실전에서 오탐: `git push -u origin agent/0-... 2>&1`이 차단** — 리다이렉트 `2>&1`을 push 대상(refspec)으로 읽음. 허용 목록으로 바꾸면서 생긴 부작용(전에는 main인지만 봐서 드러나지 않음). 리다이렉트 토큰을 건너뛰게 수정 (테스트 3개 실패 확인 → 수정, `main 2>&1`은 계속 차단 확인)
+   - 3차 리뷰(승인, 🟡): 이 수정이 새 구멍을 만듦 — `"> 파일"`의 파일까지 건너뛰게 했더니 `git push origin ">" main`(따옴표 속 `>`는 리다이렉트가 아닌 진짜 refspec)으로 대상을 숨길 수 있었다. 토큰화가 따옴표를 벗겨 둘을 구분 못 하므로, 리다이렉트 토큰 **자체만** 건너뛰게 단순화. 떨어진 `> push.log`는 차단되는 안전한 오탐으로 남김 (`>push.log`, `2>&1`은 통과)
+   - 4차 리뷰(승인, 🟡): 같은 원인의 변형 `git push origin "2>x:main"`, `">main"`이 여전히 통과 → 증상이 아니라 **원인**(따옴표를 벗긴 뒤에 판정)을 고침: git 명령은 `_tokens(..., drop_redirects=True)`로 따옴표가 남아 있을 때 리다이렉트를 걸러낸다. 따옴표로 시작하는 토큰은 리다이렉트로 보지 않음
+   - 교훈: 리뷰 지적을 하나씩 막으면 같은 부류가 계속 나온다 (3차 → 4차). 두 번째 비슷한 지적이 오면 원인으로 거슬러 올라간다
+   - 교훈: 단위 테스트 표는 "사람이 쓰는 깔끔한 명령"뿐이었다. 에이전트가 실제로 붙이는 꼬리(`2>&1`, `| tail`)도 표에 넣어야 한다. 도그푸딩이 이걸 잡았다
    - 교훈: 허용 목록으로 바꿔도 "명령이 실제로 무엇을 건드리는가"(--all)와 "같은 명령의 다른 이름"(별칭)은 따로 봐야 한다
 
 ### 알려진 한계
+- 리뷰 5차(승인)에서 남은 것: `2>C:/tools/git.exe`처럼 리다이렉트 대상이 git 경로이면 guard가 IndexError → run_guard가 차단 (안전한 쪽 실패, 이유 메시지만 엉뚱함). 떨어진 `> push.log`, PowerShell `*>`도 차단되는 오탐
 - 리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환
 - heredoc 본문 속 명령 문자열(`gh pr new` 등)도 guard가 실제 명령으로 보고 막는다 (보수적 동작). 테스트 데이터는 파일 도구로 넘긴다
 - guard는 **명령줄 인자만** 본다: `git -c push.default=upstream push`, `git branch -u origin/main` 후 `git push`, `remote.origin.push` 설정으로 대상 바꾸기, `gh api repos/o/r/pulls`로 draft 아닌 PR 만들기는 못 막음 → 최종 경계는 GitHub Ruleset과 사람 머지

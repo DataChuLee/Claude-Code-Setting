@@ -83,6 +83,14 @@ BLOCKED = [
     ("gh pr create --title x --body-file b.md", "agent/1-x"),
     # Phase 3 리뷰 지적: 모든 브랜치 push, gh 별칭, ready 전환, draft 값 뒤집기
     ("git push --all origin", "agent/1-x"),
+    ("git push origin main 2>&1", "agent/1-x"),
+    # 따옴표 속 '>'는 셸 리다이렉트가 아니라 진짜 refspec (3차 리뷰 지적)
+    ('git push origin ">" main', "agent/1-x"),
+    ("git push origin '>' feature/x", "agent/1-x"),
+    ('git push origin "2>" agent/x:main', "agent/1-x"),
+    ('git push origin "2>x:main"', "agent/1-x"),  # 4차 리뷰: 기호 뒤에 붙인 변형
+    ("git push origin '>x:main'", "agent/1-x"),
+    ('git push origin ">main"', "agent/1-x"),
     ("git push --mirror origin", "agent/1-x"),
     ("git push --branches origin", "agent/1-x"),
     ("gh pr new --title x", "agent/1-x"),
@@ -113,6 +121,10 @@ ALLOWED = [
         "agent/1-x",
     ),
     ("git push origin agent/1-x:agent/1-x", "agent/1-x"),
+    # 리다이렉트는 push 대상이 아니다 (ship 실전에서 발견한 오탐)
+    ("git push -u origin agent/1-x 2>&1", "agent/1-x"),
+    ("git push origin agent/1-x >push.log", "agent/1-x"),
+    ("git push origin agent/1-x 2>err.txt", "agent/1-x"),
     ("git push origin --delete agent/1-x", "main"),
     ("gh pr view 3", "feature"),
     ("env FOO=1 python app.py", "feature"),

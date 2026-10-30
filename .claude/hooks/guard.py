@@ -18,6 +18,7 @@ SEGMENT_SPLIT = re.compile(r"&&|\|\||;|\||\n")
 PATH_CANDIDATE = re.compile(
     r"[\w./\\~-]*(\.env[\w.]*|\.(pem|key)\b|id_(rsa|ed25519|ecdsa|dsa)\b|\.ssh[/\\][\w.]*)"
 )
+REDIRECT = re.compile(r"\d*(>>?|<)(&\d)?")  # 2>&1, >, 2>err.txt 의 앞부분
 PUSH_OPTS_WITH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
 GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 
@@ -36,12 +37,16 @@ def check_path(path: str) -> str | None:
     return None
 
 
-def _tokens(segment: str) -> list[str]:
+def _tokens(segment: str, drop_redirects: bool = False) -> list[str]:
     try:
         # posix=False: Windows 경로의 백슬래시를 escape로 먹지 않게
-        return [t.strip("'\"") for t in shlex.split(segment, posix=False)]
+        raw = shlex.split(segment, posix=False)
     except ValueError:
-        return segment.split()
+        raw = segment.split()
+    if drop_redirects:
+        # 따옴표를 벗기기 전에 판정: '">"'처럼 따옴표 속 기호는 리다이렉트가 아니라 진짜 인자
+        raw = [t for t in raw if not REDIRECT.match(t)]
+    return [t.strip("'\"") for t in raw]
 
 
 def _push_targets(args: list[str], branch: str) -> list[str]:
@@ -190,7 +195,9 @@ def check_command(command: str, branch: str) -> str | None:
             return harness_reason
         head, program_tokens = _program(tokens)
         if head == "git":
-            reason = _check_git(program_tokens, branch)
+            reason = _check_git(
+                _program(_tokens(segment.strip(), drop_redirects=True))[1], branch
+            )
         elif head == "gh":
             reason = _check_gh(program_tokens, segment)
         else:
