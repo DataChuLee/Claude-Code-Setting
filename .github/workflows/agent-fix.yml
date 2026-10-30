@@ -77,6 +77,8 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"  # 에이전트가 쓴 테스트·훅이 OAuth 토큰을 읽지 못하게
+          # -p 실행은 메인 턴이 끝나면 종료된다 → reviewer를 백그라운드로 띄우면 결과를 못 받고 PR 없이 끝남 (실패 10)
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
