@@ -20,7 +20,7 @@ argument-hint: "[기능명]"
    - 정상 / 경계값(0, 빈 값, 최대) / 예외 케이스
    - `python -m pytest tests/test_<기능>.py` → **실패 확인**
 3. **Green** — 테스트를 통과하는 최소 코드 작성 → `python -m pytest` 통과 확인
-4. **Refactor** — 테스트를 유지한 채 정리 → `ruff check --fix . && ruff format .`
+4. **Refactor** — 테스트를 유지한 채 정리 → `python -m ruff check --fix . && python -m ruff format .` (CI 허용 목록은 `python -m`만)
 5. **문서 갱신** — TODO.md 완료 항목 체크, CLAUDE.md에 실제 인터페이스·결정 사항 반영
    (`src/<기능>/` 코드를 바꾸고 TODO.md를 안 바꾸면 Stop 게이트가 막는다)
 6. LLM 출력이 들어가는 부분은 `eval` 스킬로 평가 → 그다음 `review` → `commit`
