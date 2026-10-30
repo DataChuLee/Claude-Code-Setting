@@ -1,4 +1,5 @@
 # {기능명} TODO
+> 이슈: #{번호} · SPEC: ./SPEC.md
 
 ## NOW
 - [ ]

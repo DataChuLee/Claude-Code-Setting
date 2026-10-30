@@ -11,23 +11,20 @@ description: "REST API 컨벤션 적용. 'API 만들어줘', 'endpoint 추가', 
 ```python
 # 성공 응답
 {
-    "data": { ... },      # 실제 데이터
+    "data": {...},  # 실제 데이터
     "error": None,
-    "meta": {             # 페이지네이션 등 부가 정보 (필요 시)
+    "meta": {  # 페이지네이션 등 부가 정보 (필요 시)
         "total": 100,
         "page": 1,
-        "size": 20
-    }
+        "size": 20,
+    },
 }
 
 # 실패 응답
 {
     "data": None,
-    "error": {
-        "code": "INVALID_INPUT",
-        "message": "이메일 형식이 올바르지 않습니다."
-    },
-    "meta": None
+    "error": {"code": "INVALID_INPUT", "message": "이메일 형식이 올바르지 않습니다."},
+    "meta": None,
 }
 ```
 
@@ -72,14 +69,17 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+
 class UserCreateRequest(BaseModel):
     email: str
     name: str
+
 
 class UserResponse(BaseModel):
     data: dict | None = None
     error: dict | None = None
     meta: dict | None = None
+
 
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(body: UserCreateRequest):
@@ -98,6 +98,7 @@ class AppException(Exception):
         self.code = code
         self.message = message
         self.status_code = status_code
+
 
 # 예시
 raise AppException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.", 404)

@@ -2,26 +2,86 @@
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true
   },
+  "permissions": {
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(!**/.env.example)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(~/.ssh/**)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push origin main *)",
+      "Bash(git push origin master *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh auth token *)",
+      "Bash(gh secret *)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f *)",
+      "PowerShell(git push origin main *)",
+      "PowerShell(git push origin master *)",
+      "PowerShell(gh pr merge *)",
+      "PowerShell(gh auth token *)",
+      "PowerShell(gh secret *)"
+    ]
+  },
   "hooks": {
-    "PostToolUse": [
+    "PreToolUse": [
       {
-        "matcher": "Write",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/post-write.ps1\" -FilePath \"$CLAUDE_FILE_PATH\""
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/run_guard.py"],
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/gate.py", "post-edit"]
+          }
+        ]
+      },
+      {
+        "matcher": "SubagentHandback",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/gate.py", "review-done"]
           }
         ]
       }
     ],
     "Stop": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \"$HOME/.claude/hooks/on-stop.ps1\"",
-            "async": true
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/gate.py", "stop"],
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "gate-reset",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/gate.py", "reset"]
           }
         ]
       }

@@ -1,33 +1,36 @@
 # My Claude Code Setting
 
-프로젝트별 Claude Code 자동화 환경 템플릿.
-`git clone` 후 바로 사용 가능.
+AI-Native Development 하네스 템플릿 (Python).
+사람은 의도를 말하고 승인만 하며, 작업 흐름은 스킬이, 안전장치는 훅이 맡는다.
+전체 로드맵: [docs/PLAN.md](docs/PLAN.md) · 설계 기록: [docs/HARNESS.md](docs/HARNESS.md)
 
 ## 구조
 
 ```
-.claude/                      ← Claude Code 자동화 설정 전체
-├── skills/
-│   ├── tdd-cycle/            ← TDD 루프 가이드 (자동 감지)
-│   ├── api-conventions/      ← REST API 컨벤션 (자동 감지)
-│   └── code-quality/         ← ruff 린트/포맷 기준 (자동 감지)
-├── agents/
-│   ├── tester.md             ← 테스트 작성 전문
-│   ├── reviewer.md           ← 코드 리뷰 전문
-│   ├── architect.md          ← 아키텍처 설계 전문
-│   └── documenter.md         ← 문서화 전문
-├── commands/
-│   ├── tdd.md                ← /tdd → TDD 전체 루프
-│   ├── review.md             ← /review → 리뷰어 호출
-│   ├── doc.md                ← /doc → 문서화 호출
-│   └── commit.md             ← /commit → ruff+pytest+커밋
+.claude/
+├── CLAUDE.md                 ← 하네스 지도 (작업 흐름·금지 사항)
+├── settings.json             ← permissions.deny + PreToolUse 훅 등록
 ├── hooks/
-│   ├── post-write.ps1        ← 파일 저장 시 pytest 자동 실행
-│   └── on-stop.ps1           ← 응답 완료 후 ruff 자동 실행
-├── templates/
-│   ├── CLAUDE.md             ← 프로젝트 루트에 복사 후 수정
-│   └── TODO.md               ← 기능 폴더마다 복사 후 수정
-└── settings.json             ← hooks 설정
+│   ├── run_guard.py          ← PreToolUse 진입점 (guard 고장 시 guard 수정만 허용)
+│   ├── guard.py              ← 위험 명령·시크릿 접근·리뷰 없는 커밋 차단 규칙
+│   ├── gate.py               ← 검증 게이트: Stop(재시도 2회)·ruff 즉시 피드백·리뷰 기록
+│   └── test_*.py             ← 훅 테스트 (python -m pytest 에 포함)
+├── skills/                   ← 자연어로 자동 실행, /이름 으로도 호출 가능
+│   ├── spec/                 ← 요구사항·인수조건 → 사람 승인 (SDD)
+│   ├── tdd/                  ← Red → Green → Refactor
+│   ├── eval/                 ← LLM 기능: 평가셋·채점기 먼저 (Eval-Driven)
+│   ├── gate-reset/           ← 사람만 실행: 게이트 재시도 횟수 초기화
+│   ├── review/               ← reviewer 에이전트로 리뷰 → TODO.md 기록
+│   ├── doc/                  ← docstring·README·API 문서
+│   ├── commit/               ← ruff + pytest + 로컬 커밋 (push 안 함)
+│   ├── ship/                 ← agent/* 브랜치 push → draft PR (머지는 사람)
+│   ├── scaffold/             ← 새 프로젝트 뼈대
+│   ├── api-conventions/      ← REST API 규칙 (참고 지식)
+│   └── code-quality/         ← ruff 기준 (참고 지식)
+├── agents/
+│   ├── builder.md            ← 설계 + 테스트 먼저 작성
+│   └── reviewer.md           ← 리뷰 + 문서화
+└── templates/                ← CLAUDE.md, FEATURE_SPEC/CLAUDE/TODO.md
 ```
 
 ## 새 프로젝트 시작
@@ -35,36 +38,42 @@
 ```bash
 git clone https://github.com/DataChuLee/Claude-Code-Setting.git my-project
 cd my-project
-rm -rf .git   # 기존 history 제거
-git init      # 새 프로젝트로 시작
+rm -rf .git && git init
 ```
 
-그 다음:
+그 다음 Claude Code에서 평소 말투로:
 ```
-1. .claude/templates/CLAUDE.md → 프로젝트 루트/CLAUDE.md 로 복사 후 수정
-2. .claude/templates/TODO.md → 기능 폴더/TODO.md 로 복사 후 수정
-3. Plan Mode (Shift+Tab) → 전체 피처 설계
-4. /tdd "첫 번째 기능" 으로 시작
+"my-project 프로젝트 세팅해줘"        → scaffold
+"문서 검색 기능 만들어줘"             → tdd (SPEC 초안 → 승인 → 테스트 → 구현)
+"리뷰해줘" / "문서화해줘" / "커밋해줘" → review / doc / commit
+"PR 올려줘"                          → ship (draft PR, 본문은 .github/pull_request_template.md)
 ```
 
-## 명령어
+## 기능 폴더
 
-| 명령어 | 역할 |
-|--------|------|
-| `/tdd "기능명"` | TDD 전체 루프 (테스트 먼저 작성 → 구현 → 통과) |
-| `/review` | 완성된 코드 리뷰 |
-| `/doc` | docstring + README 문서화 |
-| `/commit` | ruff 체크 + pytest + git commit |
+```
+src/<기능>/
+├── SPEC.md    ← 요구사항·인수조건 (사람이 승인)
+├── CLAUDE.md  ← 기능 지도 (이 폴더 파일을 읽을 때 자동 로드)
+└── TODO.md    ← 작업 체크리스트·리뷰 기록
+```
 
-## Hooks 동작
+## 검증 게이트
 
-| 이벤트 | 스크립트 | 동작 |
-|--------|----------|------|
-| Write (Python 파일 저장) | post-write.ps1 | pytest 자동 실행 |
-| Stop (응답 완료) | on-stop.ps1 | ruff 체크 + 알림음 |
+| 언제 | 무엇 | 실패하면 |
+|---|---|---|
+| .py 저장 직후 | ruff | 즉시 Claude에게 오류 전달 |
+| 응답 종료 시 | pytest · ruff · mypy · 기능 TODO.md 갱신 | 2회까지 되돌려 고치게 함, 3번째엔 멈추고 사람 호출 (`/gate-reset`) |
+| 커밋 시 | reviewer가 본 코드 = 지금 코드 | 커밋 차단 |
+| push·PR 시 | 대상이 `agent/*` 브랜치, PR은 `--draft` | 차단 |
 
-## 기술 스택 기준
-- Python 3.11+
-- pytest (테스트)
-- ruff (린트/포맷)
-- FastAPI (API, 선택)
+## 안전장치
+
+| 층 | 무엇 | 막는 것 |
+|---|---|---|
+| 1 | `settings.json` deny | 흔한 형태의 위험 명령, 시크릿 파일 |
+| 2 | `guard.py` (PreToolUse) | 변형된 명령까지 문자열·현재 브랜치로 검사 |
+| 3 | GitHub 브랜치 보호 | 서버 측 최종 경계 (사용자가 직접 설정) |
+
+## 기술 스택
+Python 3.11+ · pytest · ruff · FastAPI(선택)
