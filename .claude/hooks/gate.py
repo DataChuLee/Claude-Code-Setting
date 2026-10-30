@@ -217,13 +217,18 @@ def reset(payload: dict, root: Path) -> None:
     _log(root, session=payload.get("session_id"), result="reset")
 
 
-def _approved(report: str) -> bool:
-    """reviewer 출력의 마지막 '승인 가능 여부:' 줄이 '✅ 승인'으로 시작하고 ❌가 없을 때만 승인."""
-    verdicts = [
+def _verdicts(report: str) -> list[str]:
+    """'승인 가능 여부:'로 시작하는 판정 줄의 콜론 뒤 부분들."""
+    return [
         line.split(":", 1)[1]
         for line in report.splitlines()
         if line.strip().lstrip("#*- ").startswith("승인 가능 여부") and ":" in line
     ]
+
+
+def _approved(report: str) -> bool:
+    """reviewer 출력의 마지막 '승인 가능 여부:' 줄이 '✅ 승인'으로 시작하고 ❌가 없을 때만 승인."""
+    verdicts = _verdicts(report)
     if not verdicts:
         return False
     # 정확한 승인 형식만 인정 ("승인 불가"·"미승인"도 '승인' 글자를 포함하므로 포함 여부로 보면 안 됨)
@@ -246,10 +251,7 @@ def review_done(payload: dict, root: Path) -> None:
         return
     # auto 모드에서는 Handback 뒤 SubagentStop이 맺음말만 들고 온다 → 판정 줄이 없으면 앞 기록 유지
     # (CI처럼 Handback이 없으면 SubagentStop의 마지막 텍스트가 보고서 자체다)
-    if (
-        payload.get("hook_event_name") == "SubagentStop"
-        and "승인 가능 여부" not in summary
-    ):
+    if payload.get("hook_event_name") == "SubagentStop" and not _verdicts(summary):
         return
     rejected = not _approved(summary)
     record = {

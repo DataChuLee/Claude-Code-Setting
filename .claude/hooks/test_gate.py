@@ -258,6 +258,39 @@ def test_closing_text_without_verdict_does_not_overwrite_handback(repo):
     assert gate.review_matches(repo)
 
 
+def test_closing_text_mentioning_verdict_phrase_does_not_overwrite(repo):
+    # 판정 줄은 _approved와 같은 기준(줄 머리 + 콜론)으로만 인정
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+    gate.review_done(_handback("승인 가능 여부: ✅ 승인"), repo)
+    gate.review_done(_subagent_stop("승인 가능 여부를 위 보고서로 전달했습니다."), repo)
+    assert gate.review_matches(repo)
+
+
+def test_handback_without_verdict_is_still_rejected(repo):
+    (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
+    gate.review_done(_handback("승인 가능 여부: ✅ 승인"), repo)
+    gate.review_done(
+        {**_handback("좋아 보입니다"), "hook_event_name": "PostToolUse"}, repo
+    )
+    assert not gate.review_matches(repo)
+
+
+def test_settings_wire_review_done_to_both_events():
+    settings = json.loads(
+        (Path(gate.__file__).parents[1] / "settings.json").read_text(encoding="utf-8")
+    )["hooks"]
+
+    def wired(event: str, matcher: str) -> bool:
+        return any(
+            group.get("matcher") == matcher
+            and any(h.get("args", [])[-1:] == ["review-done"] for h in group["hooks"])
+            for group in settings.get(event, [])
+        )
+
+    assert wired("PostToolUse", "SubagentHandback")  # auto 모드 (로컬)
+    assert wired("SubagentStop", "reviewer")  # 그 외 (CI의 -p)
+
+
 def test_subagent_stop_rejection_with_verdict_is_recorded(repo):
     (repo / "tests" / "test_new.py").write_text("def test_new():\n    assert True\n")
     gate.review_done(_handback("승인 가능 여부: ✅ 승인"), repo)
