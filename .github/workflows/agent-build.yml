@@ -101,7 +101,7 @@ jobs:
         run: |
           # show_full_output은 도구 결과까지 공개 로그에 남긴다 → 마지막 답변과 거부된 도구의 대상만
           # 모델 출력 속 `::error::` 같은 줄이 워크플로 명령으로 해석되지 않게
-          t=$(openssl rand -hex 16); echo "::stop-commands::$t"
+          t=$(openssl rand -hex 16); echo "::stop-commands::$t"; trap 'echo "::$t::"' EXIT
           # 게이트 에스컬레이션은 result에 안 남을 수 있다 → 실패한 검사 이름만 있는 기록 줄
           if [ -f .claude/state/gate-log.jsonl ]; then
             jq -c 'select(.result == "block" or .result == "escalate")' .claude/state/gate-log.jsonl || true  # 깨진 줄이 아래 출력을 막지 않게
@@ -110,11 +110,10 @@ jobs:
             jq -r '(if type == "array" then . else [.] end) | map(select(.type == "result")) | last // {}
               | "종료: \(.subtype) is_error=\(.is_error) 턴=\(.num_turns)",
                 "마지막 답변:\n\((.result // "(없음)")[0:2000])",
-                (.permission_denials // [] | .[] | "거부된 도구: \(.tool_name) \((.tool_input.command // .tool_input.file_path // "")[0:300])")' "$OUT"
+                (.permission_denials // [] | .[] | "거부된 도구: \(.tool_name) \((.tool_input.command // .tool_input.file_path // "")[0:300])")' "$OUT" || true  # 예상 밖 필드 형식이어도 단계는 남은 출력을 끝낸다
           else
             echo "실행 기록 없음"
           fi
-          echo "::$t::"
       - name: 실패 알림
         if: failure() || steps.pr.outputs.number == ''
         env:
