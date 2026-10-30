@@ -80,6 +80,9 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 ### 운영 메모
 - **훅이 모든 셸 명령을 막을 때** (python을 못 찾는 등): `onFailure: "block"` 때문. 터미널에서 `python --version` 확인 → 안 되면 `.claude/settings.json`의 `"command": "python"`을 python 전체 경로로 바꾼다
 - **GitHub 브랜치 보호 (사용자가 직접 설정)**: 저장소 → Settings → Branches(또는 Rules → Rulesets) → `main` 대상 규칙 추가 → *Require a pull request before merging*, *Block force pushes* 체크
+  - 2026-10-30 적용: 사용자가 웹에서 Ruleset `main` 생성 (Active, Bypass 없음 → 관리자도 적용, 대상 default branch, 필요 승인 0 — 1인 저장소라 1이면 본인 PR 머지 불가). 에이전트가 대신 설정하지 않음 — PLAN 금지 사항이자 guard가 막는 동작이고, 에이전트가 걸 수 있는 보호는 에이전트가 풀 수도 있어서
+  - 확인(읽기 전용): `gh api repos/<owner>/<repo>/rules/branches/main` → `deletion`, `non_fast_forward`, `pull_request(required_approving_review_count: 0)` 3개. 이 API는 Active 규칙만 돌려준다
+  - status check 필수화는 Phase 4에서 CI를 만든 뒤 추가
 - 전역 `~/.claude/mods/command-guard`는 이 PC에만 있다. clone·CI에선 하네스 `guard.py`만 동작
 
 - 기존 `post-write.ps1`·`on-stop.ps1` 삭제 (등록 해제 상태였고, Phase 2에서 Python 게이트로 대체)
