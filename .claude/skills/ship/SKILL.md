@@ -28,6 +28,13 @@ argument-hint: "[이슈번호]"
    없으면 `gh pr create --draft --base main --title "<type: 요약>" --body-file .claude/tmp/pr-body.md`
 7. PR URL과 "머지는 사람이 검토 후 진행"을 보고한다
 
+## PR 크기
+- 바뀐 줄(추가+삭제)이 500줄을 넘으면 CI가 실패한다. 넘을 것 같으면 PR을 올리기 전에 멈추고 이슈를 쪼개자고 보고한다
+
+## CI에서 (agent-build·agent-fix 워크플로)
+- `gh`는 PATH에 있고 `GH_TOKEN`으로 인증된다. 브랜치는 `agent/<이슈번호>-<요약>`
+- fix 워크플로에서는 이미 있는 PR 브랜치에 push만 한다 (6번의 `gh pr edit`은 반영 내역을 본문 리뷰 표에 추가할 때만)
+
 ## 하지 않는 것
 - `gh pr merge`, `gh pr ready`, 자동 머지 — 머지와 ready 전환은 사람이 한다 (guard가 차단)
 - draft 없는 PR — guard가 차단

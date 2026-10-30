@@ -1,0 +1,51 @@
+# 테스트·린트·타입·PR 크기 검사. 두 경로:
+# - pull_request: 사람이 PR을 열거나 push하거나 Ready로 바꿀 때 → PR head에 `check`가 붙는다 = 머지 조건
+#   (Ruleset required check. 봇의 GITHUB_TOKEN 이벤트는 워크플로를 트리거하지 않으므로 봇만으로는 이 check가 생기지 않음)
+# - workflow_call: agent-build/agent-fix가 에이전트에게 빠른 피드백용으로 호출 (결과는 PR head가 아니라 run 로그에)
+name: ci
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_call:
+    inputs:
+      pr:
+        type: number
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PR: ${{ inputs.pr || github.event.pull_request.number }}
+      MAX_CHANGED_LINES: 500
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ env.PR }}/head
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: 의존성
+        run: |
+          pip install pytest ruff mypy
+          if [ -d src ]; then pip install -e ".[dev]"; fi
+      - run: python -m pytest -q
+      - run: python -m ruff check .
+      - run: python -m ruff format --check .
+      - name: mypy
+        run: python -m mypy $(ls -d src tests .claude/hooks 2>/dev/null)
+      - name: PR 크기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json additions,deletions --jq '.additions + .deletions')
+          echo "바뀐 줄: $n (상한 $MAX_CHANGED_LINES)"
+          if [ "$n" -gt "$MAX_CHANGED_LINES" ]; then
+            echo "::error::PR이 ${MAX_CHANGED_LINES}줄을 넘습니다 ($n). 이슈를 쪼개세요"
+            exit 1
+          fi

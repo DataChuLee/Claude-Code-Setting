@@ -30,3 +30,8 @@ components:
     - hooks/gate.py           # Stop 게이트·PostToolUse ruff·SubagentHandback 리뷰 기록·/gate-reset
   github:
     - ../.github/pull_request_template.md   # PR 본문 6개 항목 (ship이 채움)
+    - ../.github/workflows/ci.yml           # pytest·ruff·mypy·PR 크기 (500줄)
+    - ../.github/workflows/agent-spec.yml   # 라벨 agent:spec → SPEC 댓글
+    - ../.github/workflows/agent-build.yml  # 라벨 agent:build → draft PR → ci·review
+    - ../.github/workflows/claude-review.yml # PR 리뷰 댓글 (읽기 + 댓글만)
+    - ../.github/workflows/agent-fix.yml    # 소유자 @claude 댓글 → 수정 (최대 2라운드)

@@ -209,3 +209,63 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - heredoc 본문 속 명령 문자열(`gh pr new` 등)도 guard가 실제 명령으로 보고 막는다 (보수적 동작). 테스트 데이터는 파일 도구로 넘긴다
 - guard는 **명령줄 인자만** 본다: `git -c push.default=upstream push`, `git branch -u origin/main` 후 `git push`, `remote.origin.push` 설정으로 대상 바꾸기, `gh api repos/o/r/pulls`로 draft 아닌 PR 만들기는 못 막음 → 최종 경계는 GitHub Ruleset과 사람 머지
 - 이 브랜치의 Phase 1~2 리뷰(1~4차)는 리뷰 로그 도입 전이라 PR #1 본문은 이 문서 기록을 근거로 작성
+
+---
+
+## Phase 4. GitHub Actions 루프 — 2026-10-30
+
+### 만든 것
+| 워크플로 | 트리거 | 하는 일 | 권한 |
+|---|---|---|---|
+| `ci.yml` | `pull_request`, `workflow_call(pr)` | pytest·ruff·format·mypy, PR 500줄 상한 | contents·PR 읽기 |
+| `agent-spec.yml` | 소유자가 `agent:spec` 라벨 | SPEC 초안을 이슈 댓글로 (표식 `<!-- agent-spec -->`) | issues 쓰기 |
+| `agent-build.yml` | 소유자가 `agent:build` 라벨 | tdd → 게이트 → reviewer → commit → ship, 그다음 ci·review 호출 | contents·PR·issues 쓰기 |
+| `claude-review.yml` | `pull_request`(소유자·같은 저장소), `workflow_call(pr)` | 리뷰 댓글 하나 (`<!-- claude-review -->`) | contents 읽기, PR 댓글 |
+| `agent-fix.yml` | 소유자가 agent/* PR에 `@claude` 댓글 | 라운드 검사 → 반영 → push, 그다음 ci·review 호출 | contents·PR·issues 쓰기 |
+
+### 설계
+| 결정 | 이유 |
+|---|---|
+| SPEC 승인을 라벨 2단계로 (사용자 결정) | 로컬의 "SPEC 승인 후 구현"을 CI에서도 유지. 방향이 틀린 이슈에 구현 비용을 쓰지 않음 |
+| 인증 = 구독 OAuth 토큰 (사용자 결정, `claude setup-token`) | 별도 과금 없음. 사용자가 Secrets에 직접 등록 |
+| prompt에는 **이슈·PR 번호만** 넣는다 | 본문을 `${{ }}`로 보간하면 프롬프트 주입 + 스크립트 주입(`run:`) 통로. 본문은 에이전트가 `gh`로 읽는 자료 |
+| 신뢰하는 SPEC = 소유자 또는 `github-actions[bot]`이 쓰고 표식이 있는 마지막 댓글 | 공개 저장소에서 아무나 "SPEC" 댓글을 달 수 있음 |
+| 트리거는 `sender == repository_owner` (action의 write 권한 검사 위에 한 겹 더) | PLAN "저장소 소유자가 지정한 라벨"을 문자 그대로 |
+| action에 `github_token: ${{ github.token }}` 전달, ci·review는 `workflow_call`로 직접 호출 | `GITHUB_TOKEN`으로 만든 push·PR은 워크플로를 트리거하지 않는다(GitHub 규칙). 앱 토큰으로 push하면 이벤트 트리거 + 직접 호출로 중복 실행 → 한 경로(직접 호출)로 고정. 봇 허용(`allowed_bots`) 0 |
+| 수정 라운드 상한을 **워크플로 단계**가 표식 댓글 수로 센다 | Phase 2와 같은 원칙: 모델의 말이 아니라 기계가 센다. 작성자(`github-actions`)로 거르므로 남의 표식 댓글은 세지 않음 |
+| 허용 도구를 워크플로마다 `--allowedTools`로 좁힘 | 실수와 흔한 주입을 줄이는 용도. **샌드박스가 아니다**: `python -m`으로 에이전트가 쓴 코드를 실행하면 그 안의 subprocess는 guard가 못 본다. 실제 경계는 소유자 라벨·job 토큰 권한·Ruleset required check |
+| 머지의 기계적 경계 = Ruleset required check `check` + ci는 `ready_for_review`에도 실행 | `GITHUB_TOKEN` 이벤트는 워크플로를 트리거하지 않아 봇의 push·ready 전환으로는 PR head에 `check`가 생기지 않는다. job 권한에 checks·statuses가 없어 위조도 불가. 사람이 Ready로 바꿔야 머지 가능 |
+| `concurrency`를 job 수준에 | workflow 수준이면 `if:`로 skip될 실행도 그룹에 들어가 대기 중인 정상 실행을 취소한다. 공개 저장소라 누구나 PR 댓글로 소유자의 fix 실행을 취소할 수 있었음 |
+| `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"` | 에이전트가 쓴 테스트·PR head의 훅이 OAuth 토큰을 환경변수로 읽어 공개 댓글에 올리는 경로 차단 (action 보안 문서의 변수. 효과는 첫 실행에서 "설정 여부"만 확인) |
+| 하네스 훅(guard·gate)을 CI에서도 그대로 사용 | 같은 `.claude/settings.json`. push는 `agent/*`만, 커밋 전 리뷰 필수, Stop 게이트 2회 재시도 |
+| 재시도·비용 상한: max-turns(spec 15/build 40/review 20/fix 20), timeout-minutes, concurrency, fix 2라운드 | 구독 토큰은 로컬 작업과 사용 한도를 공유. API 키로 바꾸면 Console workspace 월 지출 한도를 걸 것. Actions 분은 공개 저장소라 무료 |
+
+### 겪은 실패와 해결
+1. **YAML 파싱 오류** — `run: gh ... --body "...: $RUN"`처럼 한 줄 값 안의 `": "`가 매핑으로 읽힘 → 블록 스칼라(`run: |`)로. 로컬에서 PyYAML로 5개 파일 파싱 확인
+2. **리뷰 1차 🔴 4건** (스크립트 주입·fork 방어·workflow_call 문법은 통과)
+   - 자동 머지 금지가 모델 순종에만 기댐 (`--allowedTools`는 샌드박스가 아님, Ruleset 필요 승인 0) → required check `check` + ci `ready_for_review`
+   - workflow_call ci의 check는 호출 이벤트의 SHA(main HEAD)에 붙어 PR에 안 보이고, 권장 설정대로면 에이전트 PR을 영원히 머지 못 함 → 위와 같은 수정으로 "사람이 Ready → ci → 머지" 흐름 확정
+   - workflow 수준 concurrency가 정상 실행을 조용히 취소(남의 댓글로 DoS 가능) → job 수준
+   - "Actions가 PR 생성 허용" 저장소 설정 누락 → 사용자 설정 목록에 추가
+   - 🟡 반영: subprocess env scrub, build 실패 후에도 만든 PR은 ci·review(`!cancelled()`), fix 상한 거부 시 재리뷰 안 함
+3. **리뷰 2차(승인) 🟡 반영 중 발견: 워크플로가 커밋 전 리뷰 대상이 아니었다** — `_reviewable`이 `.py`·`.claude/`·pyproject만 봐서, 권한을 가장 많이 쥔 `.github/workflows/`가 리뷰 없이 커밋될 수 있었음 → 대상에 추가 (테스트 먼저 실패 확인)
+4. **리뷰 3차(승인) 🟡: "SPEC이 라벨 이후 수정됐으면 멈춤"을 모델에게 맡김** — 에이전트의 도구로는 라벨 시각·수정 시각을 알 수 없어 실행 불가능한 지시였다 → 판단을 워크플로 `run:` 단계로 옮기고(REST `created_at`/`updated_at` 필드 확인 후), 검증된 SPEC만 `.claude/tmp/spec.md`로 넘김. 에이전트는 댓글을 뒤지지 않는다
+   - 교훈: 안전 조건을 프롬프트에 쓰기 전에 "모델이 그 조건을 확인할 수단이 있는가"부터 본다. 없으면 기계(워크플로·훅)로
+   - 교훈: "도구 허용 목록 = 경계"라고 착각했다. Phase 1에서 배운 "deny는 보안 경계가 아님"과 같은 실수를 CI에서 반복 → 최종 경계는 항상 서버 측(Ruleset·토큰 권한)
+
+### 사용자 설정 (저장소 설정·시크릿 → 사용자가 직접)
+1. `gh auth refresh -s workflow` (Claude가 실행, 브라우저 승인만 사용자) 2. `CLAUDE_CODE_OAUTH_TOKEN` Secret (사용자) 3. 라벨 `agent:spec`·`agent:build` (Claude가 생성함) 4. Actions가 PR 생성 허용 (사용자) 5. **Ruleset required status check `check` (사용자, 필수)**
+
+### 알려진 한계·확인할 것
+- `issues`·`issue_comment` 워크플로는 **기본 브랜치(main)의 파일**로 실행된다 → 실전 검증은 이 PR이 머지된 뒤에 가능
+- CI에서 프로젝트 훅이 실제로 도는지, `github_token`만으로 Claude GitHub App 설치 없이 동작하는지는 첫 실행 로그로 확인
+- 리뷰 봇의 지적은 자료일 뿐이라 수정 범위는 소유자 댓글이 정하지만, 모델이 그 경계를 지키는지는 프롬프트에 의존
+- 이슈 본문을 통한 프롬프트 주입은 근본적으로 못 막는다. 주입된 에이전트는 실행 경로와 `.git/config`의 토큰으로 job 권한(`contents`·`issues`·`pull-requests: write`)을 그대로 쓸 수 있다: main 외 브랜치·태그·릴리스 생성/삭제, 봇이 쓴 댓글 수정(다른 이슈의 SPEC 댓글 포함), 라운드 표식 삭제. 머지는 required check가 막고, SPEC 바꿔치기는 build 워크플로 단계가 막는다(봇 SPEC 댓글이 `created_at != updated_at`이면 거부, 고친 SPEC은 소유자 댓글로 재게시). 후속: 태그 Ruleset 보호
+- 리뷰 4차(승인)에서 남은 것: 주입된 이전 run이 다른 이슈에 봇 이름으로 **새** SPEC 댓글을 달거나 소유자 SPEC 댓글을 지우면 수정 검사를 통과한다 → 후속: 봇 SPEC은 소유자의 👍 반응이 있어야 승인 (GITHUB_TOKEN으로는 소유자 반응을 못 만듦. 반응이 `updated_at`을 바꾸는지 먼저 확인). 그 전까지는 `agent:build` 전에 SPEC 댓글이 하나뿐인지 눈으로 확인
+- 후속: spec.md 첫 줄에 SPEC 댓글 URL을 넣어 PR 본문 링크에 쓰기, action을 커밋 SHA로 고정, 공식 jq에서 `add[]` 동작 확인(gh 내장 gojq로만 확인)
+- `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`의 목적은 **OAuth 토큰 보호**다. `GITHUB_TOKEN`은 이미 `.git/config`에서 읽을 수 있으므로 숨기는 대상이 아니라 job 권한·Ruleset으로 묶는 대상
+- build·fix가 부른 리뷰 중에 소유자가 Ready를 누르면 진행 중 리뷰가 취소되고 build·fix run이 cancelled로 보인다 (새 리뷰는 돈다, 의도된 동작)
+- **첫 실행에서 확인**: env scrub이 `GH_TOKEN`까지 지우면 에이전트의 `gh`가 인증 실패 → 대안은 action 전에 `gh auth login --with-token`으로 gh 설정 파일에 저장 (GITHUB_TOKEN은 job 종료 시 만료)
+- `--max-turns`는 서브에이전트(reviewer) 턴을 세지 않는다 → 그 부분은 `timeout-minutes`만 막음
+- action을 `@v1` 태그로 사용 (커밋 SHA 고정은 후속 과제)
+- "만든 PR 찾기"는 이전 실행이 남긴 같은 이슈의 열린 PR도 집을 수 있음
