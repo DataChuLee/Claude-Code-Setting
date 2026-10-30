@@ -253,6 +253,12 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
    - 교훈: 안전 조건을 프롬프트에 쓰기 전에 "모델이 그 조건을 확인할 수단이 있는가"부터 본다. 없으면 기계(워크플로·훅)로
    - 교훈: "도구 허용 목록 = 경계"라고 착각했다. Phase 1에서 배운 "deny는 보안 경계가 아님"과 같은 실수를 CI에서 반복 → 최종 경계는 항상 서버 측(Ruleset·토큰 권한)
 
+### 검증 (실전, PR #2)
+| 시도 | 결과 |
+|---|---|
+| `ci` (`pull_request` opened, Linux 러너) | **통과 18초** — 훅 테스트 154개가 Linux에서도 통과 (Windows 경로 케이스 포함) |
+| `claude-review` (Secret 등록 전) | 실패: action 자체 검증 "ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN … is required" → 예상된 실패, 값이 비어 있음을 로그로만 확인 (토큰 출력 없음) |
+
 ### 사용자 설정 (저장소 설정·시크릿 → 사용자가 직접)
 1. `gh auth refresh -s workflow` (Claude가 실행, 브라우저 승인만 사용자) 2. `CLAUDE_CODE_OAUTH_TOKEN` Secret (사용자) 3. 라벨 `agent:spec`·`agent:build` (Claude가 생성함) 4. Actions가 PR 생성 허용 (사용자) 5. **Ruleset required status check `check` (사용자, 필수)**
 
