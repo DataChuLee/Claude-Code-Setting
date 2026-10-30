@@ -89,8 +89,9 @@ jobs:
         id: pr
         if: always()
         run: |
-          n=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,headRefName \
-            --jq "map(select(.headRefName | startswith(\"agent/$ISSUE-\")))[0].number // empty")
+          # 같은 저장소 브랜치만: 공개 저장소에서는 누구나 fork에 agent/<N>- 브랜치로 PR을 미리 열 수 있다
+          n=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,headRefName,isCrossRepository \
+            --jq "map(select((.isCrossRepository | not) and (.headRefName | startswith(\"agent/$ISSUE-\"))))[0].number // empty")
           echo "number=$n" >> "$GITHUB_OUTPUT"
       - name: 실패 알림
         if: failure() || steps.pr.outputs.number == ''

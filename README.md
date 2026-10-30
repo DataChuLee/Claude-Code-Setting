@@ -64,6 +64,8 @@ PR에 "@claude 반영해줘"  → 지적 반영 → push → ci + 재리뷰   (�
 3. 라벨 만들기: `gh label create agent:spec` · `gh label create agent:build`
 4. Settings → Actions → General → Workflow permissions → **Allow GitHub Actions to create and approve pull requests** 켜기 (agent-build의 `gh pr create`에 필요)
 5. **Ruleset → Require status checks → `check` 추가 (필수)** — 에이전트 토큰의 이벤트로는 `check`가 생기지 않으므로, 사람이 Ready로 바꿔야 CI가 돌고 그 결과가 머지 조건이 된다. 이게 없으면 프롬프트 주입된 에이전트가 머지 API를 부르는 것을 GitHub 쪽에서 막을 장치가 없다
+   - 같은 Ruleset(대상 main)에 **Require a pull request before merging**, **Block force pushes**, **Restrict deletions**도 켠다. guard 훅은 에이전트 셸 명령만 보므로, 코드 안의 subprocess로 하는 push는 이 규칙만 막는다
+   - 트리거는 `sender == 저장소 소유자`로 묶여 있어 **개인 저장소 전제**다 (조직 저장소면 조건을 바꿔야 한다)
 
 머지 흐름: draft PR → 사람이 검토 → **Ready for review** (ci 실행) → `check` 통과 → 머지
 (Ready 이후 `@claude` 수정을 돌렸다면 봇의 push로는 ci가 돌지 않는다 → Draft로 되돌렸다가 다시 Ready, 또는 close/reopen)

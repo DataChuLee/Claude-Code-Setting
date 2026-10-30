@@ -33,6 +33,13 @@ jobs:
     env:
       PR: ${{ inputs.pr || github.event.pull_request.number }}
     steps:
+      - name: 같은 저장소 PR만 (workflow_call 경로는 위 if가 fork를 거르지 않는다)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json isCrossRepository --jq .isCrossRepository)" != "false" ]; then
+            echo "::error::fork PR에서는 시크릿을 쓰는 리뷰를 돌리지 않습니다"; exit 1
+          fi
       - uses: actions/checkout@v6
         with:
           ref: refs/pull/${{ env.PR }}/head

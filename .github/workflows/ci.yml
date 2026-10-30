@@ -40,11 +40,13 @@ jobs:
       - name: mypy
         run: python -m mypy $(ls -d src tests .claude/hooks 2>/dev/null)
       - name: PR 크기
+        # 사람용 문서(*.md)는 세지 않는다. 에이전트 동작을 바꾸는 md(.claude/ 아래, 모든 CLAUDE.md)는 센다
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          n=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json additions,deletions --jq '.additions + .deletions')
-          echo "바뀐 줄: $n (상한 $MAX_CHANGED_LINES)"
+          n=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files?per_page=100" \
+            | jq -s '[add[] | select((.filename | endswith(".md")) and (.filename | startswith(".claude/") or endswith("CLAUDE.md") | not) | not) | .additions + .deletions] | add // 0')
+          echo "바뀐 줄(사람용 문서 제외): $n (상한 $MAX_CHANGED_LINES)"
           if [ "$n" -gt "$MAX_CHANGED_LINES" ]; then
             echo "::error::PR이 ${MAX_CHANGED_LINES}줄을 넘습니다 ($n). 이슈를 쪼개세요"
             exit 1

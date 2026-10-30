@@ -40,7 +40,7 @@ jobs:
             echo "::error::agent/* 브랜치의 같은 저장소 PR만 대상입니다 ($head)"; exit 1
           fi
           done_rounds=$(echo "$info" | jq --arg m "$ROUND_MARK" \
-            '[.comments[] | select((.author.login | startswith("github-actions")) and (.body | startswith($m)))] | length')
+            '[.comments[] | select(((.author.login // "") == "github-actions") and (.body | startswith($m)))] | length')
           if [ "$done_rounds" -ge "$MAX_ROUNDS" ]; then
             gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "⛔ 수정 라운드 상한(${MAX_ROUNDS})에 도달했습니다 — 사람이 직접 판단해 주세요"
             exit 1
