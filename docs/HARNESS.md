@@ -204,7 +204,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
    - 교훈: 허용 목록으로 바꿔도 "명령이 실제로 무엇을 건드리는가"(--all)와 "같은 명령의 다른 이름"(별칭)은 따로 봐야 한다
 
 ### 알려진 한계
-- 리뷰 5차(승인)에서 남은 것: `2>C:/tools/git.exe`처럼 리다이렉트 대상이 git 경로이면 guard가 IndexError → run_guard가 차단 (안전한 쪽 실패, 이유 메시지만 엉뚱함). 떨어진 `> push.log`, PowerShell `*>`도 차단되는 오탐
+- 리뷰 5차(승인)에서 남은 것: `2>C:/tools/git.exe`처럼 리다이렉트 대상이 git 경로이면 guard가 IndexError → run_guard가 차단 (안전한 쪽 실패, 이유 메시지만 엉뚱함). 떨어진 `> push.log`, PowerShell `*>`도 차단되는 오탐 → **이슈 #3에서 해결** (연산자만 있는 토큰이면 다음 토큰을 파일 이름으로 버림. IndexError는 현재 코드에서 재현되지 않음). PowerShell `*>`는 **일부러 차단 유지**: bash에서 `*`는 glob이라 `main` 파일이 있으면 main이 push 인자가 된다 (Phase 4 실패 9)
 - 리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환
 - heredoc 본문 속 명령 문자열(`gh pr new` 등)도 guard가 실제 명령으로 보고 막는다 (보수적 동작). 테스트 데이터는 파일 도구로 넘긴다
 - guard는 **명령줄 인자만** 본다: `git -c push.default=upstream push`, `git branch -u origin/main` 후 `git push`, `remote.origin.push` 설정으로 대상 바꾸기, `gh api repos/o/r/pulls`로 draft 아닌 PR 만들기는 못 막음 → 최종 경계는 GitHub Ruleset과 사람 머지
@@ -261,6 +261,16 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 7. **PR #2가 자기 크기 제한(500줄)에 걸림** (503줄) → 사용자 결정: 사람용 문서(`*.md`)는 세지 않는다. 에이전트 동작을 바꾸는 md(`.claude/` 아래, 모든 `CLAUDE.md`)는 센다. 목적(사람이 검토할 수 있는 크기)은 유지
    - 한계: `pull_request` ci는 PR 쪽 ci.yml로 돌아, PR이 상한·검사를 바꾸면 자기 자신을 통과시킬 수 있다 → 워크플로 변경은 리뷰 필수 대상이고 사람이 머지 전에 본다
 
+8. **첫 실전 루프(이슈 #3)에서 build가 guard.py를 못 고침** — SPEC 단계는 성공(11턴, $0.16, 인수조건 12개). build는 7턴 만에 "권한 정책으로 `.claude/hooks/guard.py` 편집 거부"를 이슈에 남기고 멈췄고, "PR 없음" 알림도 정상 동작. 원인은 우리 deny가 아니라 Claude Code의 **보호 경로**: `.claude/`(와 `.git`) 쓰기는 `--allowedTools Edit`나 allow 규칙으로도 자동 승인되지 않는다(`bypassPermissions`에서만 풀림)
+   - 결과적으로 좋은 성질: 주입된 CI 에이전트도 **자기를 감시하는 하네스(guard·gate·settings·스킬)는 못 고친다**. 하네스 수정은 사람 쪽(로컬) 작업 → #3은 로컬에서 TDD로 고침
+   - 교훈: 루프 시험 과제는 하네스가 아니라 프로젝트 코드로 고른다. 그리고 진단 때 guard를 `guard.py`로 직접 돌려 "통과"를 봤는데, 진입점은 `run_guard.py`였다(아무것도 검사하지 않은 확인) → 훅 시험은 settings.json에 적힌 진입점으로
+
+9. **이슈 #3 수정이 보안 회귀를 만듦 (로컬 reviewer 🔴)** — SPEC 인수조건 "`*> out.txt`면 허용"을 그대로 구현했더니, bash에서 `touch main` 후 `*> out.txt`를 붙인 agent 브랜치 push가 main까지 push하는 길이 열렸다(수정 전 guard는 차단). 인수조건이 셸 종류(PowerShell/bash)를 구분하지 않은 것이 원인 → `*` 접두어를 리다이렉트로 인정하지 않고 회귀 테스트를 BLOCKED에 추가
+   - 교훈: 에이전트가 쓰고 사람이 승인한 SPEC도 틀릴 수 있다. 보안 코드에서 "허용을 늘리는" 인수조건은 우회 관점으로 따로 검토한다
+   - 교훈: 이 수정 중 파이썬 일괄 치환 스크립트가 두 번째 치환에서 실패해 guard가 **중간 상태**로 남았다(테스트 1개 실패, 도구는 안 막힘). "guard는 한 번에 완결된 수정" 규칙을 일괄 치환으로 어겼다 → guard는 Edit 한 번(또는 전체 Write)으로
+   - 교훈: 기록 문장을 heredoc으로 넘기자 guard가 본문 속 push 문장을 명령으로 읽어 차단했다(heredoc 본문 오탐) → 긴 텍스트는 파일로 쓰고 실행
+   - 같은 리뷰에서 발견한 **기존 우회** (#3 이전부터): `SEGMENT_SPLIT`가 따옴표와 `>|`를 몰라, `>|` 리다이렉트나 따옴표 속 `;`를 섞은 main push가 허용된다. 서버 쪽 Ruleset(PR 필수)이 main을 막으므로 실제 피해는 없지만 guard 단독으로는 뚫림 → 후속 이슈 (하네스 코드라 로컬 작업)
+
 ### 검증 (실전, PR #2)
 | 시도 | 결과 |
 |---|---|
@@ -276,6 +286,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `issues`·`issue_comment` 워크플로는 **기본 브랜치(main)의 파일**로 실행된다 → 실전 검증은 이 PR이 머지된 뒤에 가능
 - CI에서 프로젝트 훅이 실제로 도는지는 build 첫 실행 로그로 확인 (`settingSources`에 project 포함은 확인)
 - 후속(이슈로): 워크플로 jq 필터를 `.github/scripts/`로 빼서 pytest로 회귀 검사, `actionlint`를 ci에, `id-token: write` 필요 여부
+- **SPEC 질문에 대한 답이 build에 전달되지 않는다**: build는 표식 붙은 마지막 SPEC 댓글만 읽는다. 답이 제안과 다르면 소유자가 답을 반영한 SPEC을 표식과 함께 다시 게시해야 한다 (#3은 제안대로라 그대로 승인). 후속: spec 스킬이 질문마다 "제안"을 쓰고, 승인 = 제안 수락으로 문서화
 - 리뷰 봇의 지적은 자료일 뿐이라 수정 범위는 소유자 댓글이 정하지만, 모델이 그 경계를 지키는지는 프롬프트에 의존
 - 이슈 본문을 통한 프롬프트 주입은 근본적으로 못 막는다. 주입된 에이전트는 실행 경로와 `.git/config`의 토큰으로 job 권한(`contents`·`issues`·`pull-requests: write`)을 그대로 쓸 수 있다: main 외 브랜치·태그·릴리스 생성/삭제, 봇이 쓴 댓글 수정(다른 이슈의 SPEC 댓글 포함), 라운드 표식 삭제. 머지는 required check가 막고, SPEC 바꿔치기는 build 워크플로 단계가 막는다(봇 SPEC 댓글이 `created_at != updated_at`이면 거부, 고친 SPEC은 소유자 댓글로 재게시). 후속: 태그 Ruleset 보호
 - 리뷰 4차(승인)에서 남은 것: 주입된 이전 run이 다른 이슈에 봇 이름으로 **새** SPEC 댓글을 달거나 소유자 SPEC 댓글을 지우면 수정 검사를 통과한다 → 후속: 봇 SPEC은 소유자의 👍 반응이 있어야 승인 (GITHUB_TOKEN으로는 소유자 반응을 못 만듦. 반응이 `updated_at`을 바꾸는지 먼저 확인). 그 전까지는 `agent:build` 전에 SPEC 댓글이 하나뿐인지 눈으로 확인

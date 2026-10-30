@@ -18,7 +18,10 @@ SEGMENT_SPLIT = re.compile(r"&&|\|\||;|\||\n")
 PATH_CANDIDATE = re.compile(
     r"[\w./\\~-]*(\.env[\w.]*|\.(pem|key)\b|id_(rsa|ed25519|ecdsa|dsa)\b|\.ssh[/\\][\w.]*)"
 )
-REDIRECT = re.compile(r"\d*(>>?|<)(&\d)?")  # 2>&1, >, 2>err.txt 의 앞부분
+REDIRECT = re.compile(r"(\d+|&)?(>>?|<)(&\d)?")  # 2>&1, >, 2>err.txt, &>x 의 앞부분
+# 연산자만 있는 토큰: 다음 토큰이 파일 이름.
+# `*>`(PowerShell)는 인정하지 않는다: bash에서는 glob `*`가 파일 이름(예: main)으로 펼쳐져 push 인자가 된다
+REDIRECT_OP = re.compile(r"(\d+|&)?(>>?|<)")
 PUSH_OPTS_WITH_VALUE = {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
 GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
 
@@ -45,7 +48,15 @@ def _tokens(segment: str, drop_redirects: bool = False) -> list[str]:
         raw = segment.split()
     if drop_redirects:
         # 따옴표를 벗기기 전에 판정: '">"'처럼 따옴표 속 기호는 리다이렉트가 아니라 진짜 인자
-        raw = [t for t in raw if not REDIRECT.match(t)]
+        kept, skip_file = [], False
+        for t in raw:
+            if skip_file:
+                skip_file = False
+            elif REDIRECT_OP.fullmatch(t):
+                skip_file = True
+            elif not REDIRECT.match(t):
+                kept.append(t)
+        raw = kept
     return [t.strip("'\"") for t in raw]
 
 

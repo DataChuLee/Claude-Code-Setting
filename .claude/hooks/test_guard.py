@@ -93,6 +93,15 @@ BLOCKED = [
     ('git push origin ">main"', "agent/1-x"),
     ("git push --mirror origin", "agent/1-x"),
     ("git push --branches origin", "agent/1-x"),
+    # 이슈 #3: 띄어 쓴 리다이렉트의 파일 이름을 버려도 진짜 대상은 남는다
+    ("git push origin main > push.log", "agent/1-x"),
+    ("git push > push.log origin main", "agent/1-x"),
+    ("git push origin main *> out.txt", "agent/1-x"),
+    # bash에서 `*`는 glob: `main` 파일이 있으면 main까지 push된다 (이슈 #3 리뷰 🔴)
+    ("git push origin agent/1-x *> out.txt", "agent/1-x"),
+    ("git push origin agent/1-x *>out.txt", "agent/1-x"),
+    ("git push &> x origin main", "agent/1-x"),
+    ("git push origin agent/1-x 2>&1 main", "agent/1-x"),  # &1은 파일이 아니다
     ("gh pr new --title x", "agent/1-x"),
     ("gh pr ready 1", "agent/1-x"),
     ("gh alias set pc 'pr create'", "agent/1-x"),
@@ -125,6 +134,16 @@ ALLOWED = [
     ("git push -u origin agent/1-x 2>&1", "agent/1-x"),
     ("git push origin agent/1-x >push.log", "agent/1-x"),
     ("git push origin agent/1-x 2>err.txt", "agent/1-x"),
+    ("git push origin agent/1-x 2>C:/tools/git.exe", "agent/1-x"),
+    # 이슈 #3: 연산자와 파일 이름이 띄어 쓰인 경우 (bash·PowerShell)
+    ("git push origin agent/1-x > push.log", "agent/1-x"),
+    ("git push > push.log origin agent/1-x", "agent/1-x"),
+    ("git push origin agent/1-x >> push.log", "agent/1-x"),
+    ("git push origin agent/1-x 2> err.log", "agent/1-x"),
+    ("git push origin agent/1-x &> out.txt", "agent/1-x"),
+    ("git push origin agent/1-x &>> out.txt", "agent/1-x"),
+    ('git push origin agent/1-x > "push log.txt"', "agent/1-x"),
+    ("git push origin agent/1-x >", "agent/1-x"),  # 연산자가 끝이어도 예외 없음
     ("git push origin --delete agent/1-x", "main"),
     ("gh pr view 3", "feature"),
     ("env FOO=1 python app.py", "feature"),
