@@ -23,11 +23,13 @@ DEADLINE_SECONDS = 270
 
 
 def _reviewable(name: str) -> bool:
-    """리뷰 대상: 코드와, 게이트 자체를 끌 수 있는 하네스 설정 (게이트가 쓰는 상태 파일은 제외)."""
+    """리뷰 대상: 코드, 게이트 자체를 끌 수 있는 하네스 설정, 권한을 쥔 CI 워크플로 (상태 파일 제외)."""
     if name.startswith(".claude/state/"):
         return False
     return (
-        name.endswith(".py") or name.startswith(".claude/") or name == "pyproject.toml"
+        name.endswith(".py")
+        or name.startswith((".claude/", ".github/workflows/"))
+        or name == "pyproject.toml"
     )
 
 

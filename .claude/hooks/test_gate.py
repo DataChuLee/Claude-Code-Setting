@@ -260,6 +260,13 @@ def test_harness_config_change_needs_review(repo):
     assert not gate.review_matches(repo)
 
 
+def test_workflow_change_needs_review(repo):
+    workflow = repo / ".github" / "workflows" / "ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: ci\n")
+    assert not gate.review_matches(repo)
+
+
 def test_every_run_is_logged(repo, fake_checks):
     _break_tests(repo)
     _stop(repo)
