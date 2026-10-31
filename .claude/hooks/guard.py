@@ -134,18 +134,51 @@ def _check_git(tokens: list[str], branch: str) -> str | None:
     return None
 
 
+# gh api로 머지·ready 전환·자동 머지·머지 큐 (REST PUT pulls/N/merge, GraphQL mutation 이름)
+GH_API_MERGE_OR_READY = re.compile(
+    r"pulls/[^/\s]+/merge\b|markPullRequestReadyForReview|mergePullRequest"
+    r"|enablePullRequestAutoMerge|enqueuePullRequest",
+    re.I,
+)
+SHELL_QUOTES = re.compile(r"[\"'`\\]")  # 셸은 벗겨 이어 붙인다: mer''ge → merge
+
+
+def _gh_sub(tokens: list[str]) -> list[str]:
+    """gh 하위 명령 두 단어. 그 앞에 끼운 플래그는 건너뛴다 (gh pr -R o/r merge 1).
+
+    하위 명령 이름은 '-'로 시작하지 않는다. 값을 따로 받는 플래그는 -R/--repo뿐이다.
+    """
+    sub: list[str] = []
+    i = 1
+    while i < len(tokens) and len(sub) < 2:
+        t = tokens[i]
+        if t in ("-R", "--repo"):
+            i += 2
+            continue
+        if t.startswith("-"):
+            i += 1
+            continue
+        sub.append(t)
+        i += 1
+    return sub
+
+
 def _check_gh(tokens: list[str], segment: str) -> str | None:
-    sub = tokens[1:3]
+    sub = _gh_sub(tokens)
     if sub == ["auth", "token"]:
         return "토큰을 출력할 수 없습니다"
-    if sub in (["pr", "merge"], ["pr", "ready"]):
+    if sub in (["pr", "merge"], ["pr", "ready"]) or (
+        sub[:1] == ["api"]
+        and GH_API_MERGE_OR_READY.search(SHELL_QUOTES.sub("", segment))
+    ):
         return "머지와 ready 전환은 사람이 합니다"
-    if sub == ["alias", "set"]:
+    # set·import·delete 모두 정의를 바꾼다. ls는 list의 공식 별칭
+    if sub[:1] == ["alias"] and sub[1:2] not in (["list"], ["ls"]):
         return "gh alias 정의로 검사를 피할 수 없습니다"
     is_create = sub in (["pr", "create"], ["pr", "new"])  # new는 create의 공식 별칭
     if is_create and (
         not {"--draft", "-d"} & set(tokens)
-        or any(t.startswith("--draft=") for t in tokens)
+        or any(t.startswith(("--draft=", "-d=")) for t in tokens)
     ):
         return "PR 은 draft 로만 만듭니다 (--draft). ready 전환과 머지는 사람이 합니다"
     if sub[:1] == ["secret"]:
@@ -210,7 +243,8 @@ def check_command(command: str, branch: str) -> str | None:
                 _program(_tokens(segment.strip(), drop_redirects=True))[1], branch
             )
         elif head == "gh":
-            reason = _check_gh(program_tokens, segment)
+            # api 본문(GraphQL 쿼리)은 여러 줄일 수 있는데 segment는 줄 단위로 잘린다 → 명령 전체를 본다
+            reason = _check_gh(program_tokens, command)
         else:
             reason = None
         if reason is None and (head == "printenv" or tokens == ["env"]):

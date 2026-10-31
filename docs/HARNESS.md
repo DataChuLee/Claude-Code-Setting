@@ -205,7 +205,11 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 
 ### 알려진 한계
 - 리뷰 5차(승인)에서 남은 것: `2>C:/tools/git.exe`처럼 리다이렉트 대상이 git 경로이면 guard가 IndexError → run_guard가 차단 (안전한 쪽 실패, 이유 메시지만 엉뚱함). 떨어진 `> push.log`, PowerShell `*>`도 차단되는 오탐 → **이슈 #3에서 해결** (연산자만 있는 토큰이면 다음 토큰을 파일 이름으로 버림. IndexError는 현재 코드에서 재현되지 않음). PowerShell `*>`는 **일부러 차단 유지**: bash에서 `*`는 glob이라 `main` 파일이 있으면 main이 push 인자가 된다 (Phase 4 실패 9)
-- 리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환
+- ~~리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환~~ → **후속 B에서 처리 (2026-10-31)**: `gh alias`는 `list`만 허용, `-d=…` 차단, `gh api`의 `pulls/<n>/merge`·`markPullRequestReadyForReview`·`mergePullRequest`·`enablePullRequestAutoMerge` 차단. 테스트 9+5개 먼저 실패 확인(8개), `run_guard.py` 진입점으로도 확인
+  - **리뷰 1차 🔴 (❌) 우회 3건**: 여러 줄 GraphQL 쿼리(`SEGMENT_SPLIT`이 `\n`에서 나눠 mutation 줄이 gh segment가 아니게 됨), 변수 PR 번호(`pulls/$N/merge`), 따옴표 이어 붙이기(`mer''ge`) → api 검사는 **명령 전체**를, 따옴표·백슬래시·백틱을 지운 뒤 `re.I`로 본다. `pulls/[^/\s]+/merge`. 🟡 `enqueuePullRequest`(머지 큐) 추가, 하위 명령 앞 `-R/--repo` 플래그 건너뛰기(`gh pr -R o/r merge 1`이 통과하던 기존 구멍), 💡 `gh alias ls` 허용. 테스트 먼저 9개 실패 확인. 이번 수정은 "정의 → 연결 → 호출부" 3단계로, 단계마다 테스트가 돌아가는 상태를 유지했다
+  - 남은 원리적 한계는 그대로: `gh api`로 draft 아닌 PR 만들기(POST 본문의 `draft` 필드), 파일에서 읽거나 명령 치환으로 만든 GraphQL 쿼리(`-F query=@file`, `"$(cat q.txt)"`)의 mutation 이름, URL 인코딩 경로, 브랜치 머지(`POST repos/o/r/merges`, GraphQL `mergeBranch` — PR이 아니라 Ruleset 대상), push 대상을 설정으로 바꾸기 → Ruleset·사람 머지가 경계
+  - 보수적 오탐(감수): api 본문·댓글 속 mutation 이름, 머지 여부를 묻는 GET `pulls/1/merge`, `-d=true`
+  - 실수: `_check_gh`에서 새 상수를 **정의 전에 사용**하는 Edit을 먼저 했다("정의 먼저, 연결은 나중" 규칙 위반). 이름 조회가 `gh api` 분기에서만 일어나 도구 전체가 잠기진 않았고, PostToolUse ruff(F821)가 즉시 잡아 바로 정의를 추가했다 (LEARNING: guard 중간 상태 4번째)
 - heredoc 본문 속 명령 문자열(`gh pr new` 등)도 guard가 실제 명령으로 보고 막는다 (보수적 동작). 테스트 데이터는 파일 도구로 넘긴다
 - guard는 **명령줄 인자만** 본다: `git -c push.default=upstream push`, `git branch -u origin/main` 후 `git push`, `remote.origin.push` 설정으로 대상 바꾸기, `gh api repos/o/r/pulls`로 draft 아닌 PR 만들기는 못 막음 → 최종 경계는 GitHub Ruleset과 사람 머지
 - 이 브랜치의 Phase 1~2 리뷰(1~4차)는 리뷰 로그 도입 전이라 PR #1 본문은 이 문서 기록을 근거로 작성
@@ -292,6 +296,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 
 ### 사용자 설정 (저장소 설정·시크릿 → 사용자가 직접)
 1. `gh auth refresh -s workflow` (Claude가 실행, 브라우저 승인만 사용자) 2. `CLAUDE_CODE_OAUTH_TOKEN` Secret (사용자) 3. 라벨 `agent:spec`·`agent:build` (Claude가 생성함) 4. Actions가 PR 생성 허용 (사용자) 5. **Ruleset required status check `check` (사용자, 필수)**
+- 운영 메모 (PR #10·#15에서 2회): Ready for review를 누르면 `check`가 다시 돈다. 그 사이 머지를 누르면 "Merging was blocked due to rule violation errors"가 뜬다 → `check`가 초록불이 된 뒤 새로고침하고 머지. 같은 파일을 고친 PR 여러 개는 하나씩 머지하고, 다음 PR은 main을 merge해 충돌을 푼 뒤 리뷰를 다시 받는다 (force push는 guard가 막으므로 rebase 대신 merge)
 
 ### 알려진 한계·확인할 것
 - `issues`·`issue_comment` 워크플로는 **기본 브랜치(main)의 파일**로 실행된다 → 실전 검증은 이 PR이 머지된 뒤에 가능
@@ -301,11 +306,11 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - 리뷰 봇의 지적은 자료일 뿐이라 수정 범위는 소유자 댓글이 정하지만, 모델이 그 경계를 지키는지는 프롬프트에 의존
 - 이슈 본문을 통한 프롬프트 주입은 근본적으로 못 막는다. 주입된 에이전트는 실행 경로와 `.git/config`의 토큰으로 job 권한(`contents`·`issues`·`pull-requests: write`)을 그대로 쓸 수 있다: main 외 브랜치·태그·릴리스 생성/삭제, 봇이 쓴 댓글 수정(다른 이슈의 SPEC 댓글 포함), 라운드 표식 삭제. 머지는 required check가 막고, SPEC 바꿔치기는 build 워크플로 단계가 막는다(봇 SPEC 댓글이 `created_at != updated_at`이면 거부, 고친 SPEC은 소유자 댓글로 재게시). 후속: 태그 Ruleset 보호
 - 리뷰 4차(승인)에서 남은 것: 주입된 이전 run이 다른 이슈에 봇 이름으로 **새** SPEC 댓글을 달거나 소유자 SPEC 댓글을 지우면 수정 검사를 통과한다 → 후속: 봇 SPEC은 소유자의 👍 반응이 있어야 승인 (GITHUB_TOKEN으로는 소유자 반응을 못 만듦. 반응이 `updated_at`을 바꾸는지 먼저 확인). 그 전까지는 `agent:build` 전에 SPEC 댓글이 하나뿐인지 눈으로 확인 → **후속 C에서 처리**: 반응은 `updated_at`을 바꾸지 않음을 이슈 #11에서 확인, build의 SPEC 단계가 봇 SPEC에 소유자 `+1` 반응을 요구(`.github/scripts/spec_approval.py`, 테스트 8개 + 구조 테스트). 남은 것: 주입된 실행이 소유자 SPEC을 지우면 build는 그 전의 봇 SPEC을 고르는데, 그 봇 SPEC에 예전 👍가 있으면 통과한다 → 라벨 전에 SPEC 댓글을 눈으로 확인하는 운영 규칙은 유지
-- 후속: spec.md 첫 줄에 SPEC 댓글 URL을 넣어 PR 본문 링크에 쓰기, action을 커밋 SHA로 고정 (`add[]`는 실패 6에서 실제 jq로 확인함)
+- 후속: spec.md 첫 줄에 SPEC 댓글 URL을 넣어 PR 본문 링크에 쓰기 (`add[]`는 실패 6에서 실제 jq로 확인함). ~~action을 커밋 SHA로 고정~~ → 후속 A(PR #13)에서 처리
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`의 목적은 **OAuth 토큰 보호**다. `GITHUB_TOKEN`은 이미 `.git/config`에서 읽을 수 있으므로 숨기는 대상이 아니라 job 권한·Ruleset으로 묶는 대상
 - build·fix가 부른 리뷰 중에 소유자가 Ready를 누르면 진행 중 리뷰가 취소되고 build·fix run이 cancelled로 보인다 (새 리뷰는 돈다, 의도된 동작)
 - `--max-turns`는 서브에이전트(reviewer) 턴을 세지 않는다 → 그 부분은 `timeout-minutes`만 막음
-- action을 `@v1` 태그로 사용 (커밋 SHA 고정은 후속 과제)
+- ~~action을 `@v1` 태그로 사용 (커밋 SHA 고정은 후속 과제)~~ → 후속 처리 A에서 SHA 고정
 - "만든 PR 찾기"는 이전 실행이 남긴 같은 이슈의 열린 PR도 집을 수 있음
 
 ---
@@ -313,7 +318,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 ## Phase 5. 관측과 개선 — 2026-10-31
 
 ### 만든 것
-- `docs/LEARNING.md`: 환류 절차와 실패 패턴 표 (HARNESS 실패 약 40건을 9개 패턴으로 묶음)
+- `docs/LEARNING.md`: 환류 절차와 실패 패턴 표 (HARNESS 실패 약 40건을 10개 패턴으로 묶음, 실전 확인 뒤 1개 추가)
 - `.claude/hooks/observe.py`: gate-log.jsonl 요약 (결과별 횟수, block·escalate된 검사, 리뷰 거절률, 에스컬레이션 세션)
 - CI 기록 보관: build·fix가 gate-log를 아티팩트 `gate-log`로 30일 동안 올림
 - 환류 실행: "성공인데 조용히 끝남" → `결과 확인` 단계 (spec·review·fix) + 구조 테스트 `.github/scripts/test_workflows.py`
@@ -340,6 +345,18 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
    - observe.py: 없는 파일을 넘기면 조용히 0건 표를 내던 것 → stderr에 경고하고 exit 1 (테스트 먼저 실패 확인)
    - 💡도 반영: 구조 테스트가 `!failure()`와 `*.yaml`을 처리, ci mypy 대상에 `.github/scripts` 추가, 아티팩트 `overwrite: true`(재실행 시 이름 충돌 방지)
    - 교훈: 결과 확인 장치도 "검사받는 쪽이 검사기를 고칠 수 있는가"를 본다. Phase 4 실패 7(PR 쪽 ci.yml)과 같은 부류
+3. **실전 확인 중 fix가 "조용히" 끝남 — 결과 확인이 잡았지만 이유를 알 수 없었다** (이슈 #11 → PR #12, fix run 41183128111)
+   - PR #12에 소유자 `@claude`로 작은 수정(테스트 속 비ASCII 문자 이스케이프)을 요청 → 에이전트 9턴, success, **권한 거부 2건**, push 없음, 이유 댓글 없음
+   - 새 "결과 확인" 단계가 exit 1로 잡았고 실패 알림이 나갔다 → Phase 5 장치가 실전에서 의도대로 동작
+   - 그러나 fix에는 build의 "멈춘 이유" 진단 단계가 없어서 **무엇이 거부됐는지 로그에 없었다**. P4 실패 10 2차(build)와 같은 실패의 두 번째 발생 → LEARNING 절차 3번
+   - 대응: build에만 인라인 jq로 있던 진단을 `.github/scripts/agent_diagnose.py`로 옮겨 테스트로 고정(6개). spec·fix·review의 claude 단계에 `id: claude`, `if: failure() && steps.claude.outcome != 'skipped'` 진단 단계 추가. 구조 테스트 `test_agent_job_diagnoses_why_it_stopped`가 모든 에이전트 job에 강제 (먼저 4개 job 실패 확인)
+   - **리뷰 1차 🔴 (❌)**: 처음엔 "정보 출력일 뿐"이라며 작업 트리의 스크립트를 그대로 돌렸다. 그러나 이 단계는 **샌드박스·ENV_SCRUB 밖의 run 단계**다. 에이전트가 파일을 바꾸면 `id-token: write` job의 OIDC 요청 변수를 쓰거나 `$GITHUB_ENV`로 다음 단계(GH_TOKEN 보유)를 조작할 수 있다. 인라인 jq일 때는 없던 구멍을 리팩터링이 만들었다 → spec·build(기본 브랜치 체크아웃)는 에이전트 실행 전 `$RUNNER_TEMP` 사본, **PR 브랜치에서 도는 review·fix는 기본 브랜치 판**(`git show origin/<default>:…`)으로 판정·진단. 없으면 파일을 만들지 않아 판정은 실패 쪽으로 간다
+   - **리뷰 2차 🔴 (❌)**: 처음엔 fix도 `cp`로 사본을 떴는데, fix의 작업 트리는 PR 브랜치라 **이전 라운드 에이전트가 커밋한 스크립트**가 사본이 된다(한 라운드 늦을 뿐 같은 구멍) → review와 같은 기본 브랜치 판으로. 구조 테스트: `checkout`에 `ref`가 있는 job은 사본을 `git show "origin/…"`로 떠야 한다 (fix만 실패 먼저 확인)
+   - 같은 김에 review의 판정 스크립트도 기본 브랜치 판으로 바꿨다 → Phase 5 한계 "PR이 판정 스크립트를 바꾸면 자기를 통과시킬 수 있다"가 닫힘
+   - 구조 테스트 강화: 진단 단계는 claude 뒤·`failure()`/`always()`·`::stop-commands::`·사본 실행, 그리고 **에이전트 뒤 단계가 작업 트리의 `.github/scripts/*.py`를 실행하면 실패** (먼저 8개 실패 확인)
+   - 🟡 반영: 에이전트 전에 실패하면(라운드 상한·fork 거부) 진단을 건너뛴다(`steps.claude.outcome != 'skipped'`). 예상 밖 형식(`permission_denials`가 숫자·문자열 원소)에서도 종료·답변 줄은 남긴다 (테스트 먼저 실패 확인)
+   - 교훈: **로직을 워크플로 밖 파일로 옮기는 리팩터링은 "누가 그 파일을 바꿀 수 있나"를 바꾼다.** 테스트 가능성을 얻는 대신 실행 경계를 다시 봐야 한다
+   - 거부된 2건의 정체는 이 수정이 main에 들어간 뒤 PR #12의 2라운드로 확인한다
 
 ### 검증
 - TDD Red: 구조 테스트가 기존 워크플로 4개 job(build·fix·spec·review) 모두에서 실패하는 것을 확인 → 단계 추가 후 통과
@@ -349,11 +366,34 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `observe.py`를 실제 로컬 로그에 실행 → 관측 메모 (LEARNING.md)
 - 전체 pytest(193)·ruff·mypy 통과
 - 아직 확인하지 못한 것: 실제 CI 실행 (`issues`·`issue_comment` 워크플로는 main의 파일로 돈다 → 머지 후 agent:spec 이슈 한 번)
+- **실전 확인 (2026-10-31, 이슈 #11)**:
+  - PR #10 자신의 review: 결과 확인 success (PR 이벤트는 PR 쪽 워크플로로 돈다)
+  - agent:spec(run 41175394358): 결과 확인 success, SPEC 댓글 게시
+  - 봇 SPEC 댓글에 👍 반응 → `updated_at` 변화 없음 확인 (후속 C-2 설계 근거)
+  - SPEC 질문 5개는 "제안대로 결정"을 소유자 댓글로 재게시 (P4 실패 10 1차 재현 방지. 후속 C-1에서 절차화)
+  - agent:build(run 41182681602): PR #12 생성, build가 부른 ci·review success, gate-log 아티팩트 3.5KB → `gh run download` → observe.py 집계(review-approved 2)
+  - agent-fix(run 41183128111): 결과 확인이 조용한 성공을 잡음 → 위 실패 3
+  - 관측: CI gate-log에는 `pass` 줄이 없다. 에이전트가 커밋을 끝낸 뒤 응답을 마쳐 Stop 시점에 바뀐 .py가 없기 때문으로 보인다. CI 관측은 review 기록이 중심
 
 ### 알려진 한계
 - 결과 확인은 "댓글이 **있다**"만 본다. 내용이 쓸모 있는지는 사람이 본다
 - fix의 결과 확인: head가 바뀌었거나 봇 댓글이 있으면 통과. 라운드 표식은 기준 id보다 앞이라 세지 않는다
-- review의 판정 스크립트는 PR head의 것이다. **PR이 `expect_comment.py`를 바꾸면 자기 자신을 통과시킬 수 있다**(P4 실패 7의 ci.yml 한계와 같은 부류). spec·fix는 에이전트 실행 전 사본을 쓴다(fix 사본은 PR head 기준이라 같은 실행 안의 변조만 막는다. 이전 라운드가 커밋한 변경은 review와 같은 한계). `.git/config` 토큰을 읽을 수 있는 것은 에이전트 단계에 이미 있는 위험과 같은 부류이고, fork PR은 기존 단계가 거부한다
+- ~~review의 판정 스크립트는 PR head의 것이다~~ → 실패 3에서 기본 브랜치 판으로 바꿈. 다만 **워크플로 파일 자체**는 `pull_request` 경로에서 PR 쪽 것으로 돈다(P4 실패 7과 같은 한계, 사람 리뷰가 경계). spec·build는 에이전트 실행 전 사본, PR 브랜치에서 도는 review·fix는 기본 브랜치 판을 쓴다(실패 3). 구조 테스트는 `.github/scripts/*.py` 경로 문자열만 본다(`python -m`, `.sh`, `.claude/hooks`를 에이전트 뒤에 실행하는 단계가 생기면 범위를 넓힌다). `.git/config` 토큰을 읽을 수 있는 것은 에이전트 단계에 이미 있는 위험과 같은 부류이고, fork PR은 기존 단계가 거부한다
 - build의 "결과 확인 — 만든 PR 찾기"는 실패하지 않는 단계다. 판정은 다음 단계들의 `if`가 한다. 구조 테스트는 이름 규칙으로 통과한다
 - 공개 저장소의 아티팩트는 로그인한 누구나 받을 수 있다. gate-log에는 reviewer 요약이 들어간다 (PR 본문에도 쓰이는 내용이고 시크릿은 없음)
 - 로컬 gate-log는 이 PC에만 있다. 여러 PC에서 작업하면 따로 모아야 한다
+
+---
+
+## 후속 처리 (Phase 1~5 이후)
+
+### A. 워크플로 공급망 — 2026-10-31
+- 외부 action 4종(claude-code-action v1, checkout v6, setup-python v6, upload-artifact v7)을 **커밋 SHA**로 고정. 태그는 주석으로 남긴다. SHA는 `gh api repos/<r>/commits/<tag>`로 확인
+  - 이유: 태그는 옮겨질 수 있다. 이 job들은 쓰기 권한 GITHUB_TOKEN과 OAuth 토큰을 쥔다
+  - 메이저 버전은 올리지 않았다(checkout·setup-python은 v7이 나와 있음). 올리는 것은 별도 변경으로
+- 구조 테스트 `test_external_action_is_pinned_to_commit_sha`: 외부 `uses:`(job 수준 재사용 워크플로 포함, `./` 제외)는 40자리 SHA여야 한다. 고정 전 16개 실패 확인 → 고정 후 통과
+- ci에 **actionlint v1.7.12**: 릴리스 checksums.txt의 sha256을 워크플로에 고정하고 검증한 뒤 실행. ubuntu 러너의 shellcheck도 함께 돈다
+  - 로컬 사전 실행(windows 바이너리 체크섬 검증, shellcheck-py): 지적 1건. ci의 `mypy $(ls -d …)`는 의도된 단어 분리라 이유를 달아 SC2046 무시
+- 한계: SHA를 올리는 것은 사람 몫이다(Dependabot 미설정). actionlint 다운로드는 GitHub 릴리스에 의존하지만 체크섬이 맞지 않으면 실패한다
+- 한계 (리뷰 🟡): 구조 테스트는 `workflows/`만 본다. composite action(`.github/actions/*/action.yml`)을 만들면 glob을 넓힌다. `docker://` uses는 지금 정규식에서 항상 실패(fail closed)하므로 쓰게 되면 `@sha256:` digest 형식을 따로 허용한다. 러너에 shellcheck가 빠지면 actionlint는 그 검사만 조용히 건너뛴다
+- SHA를 올릴 때는 `commits/<tag>`의 커밋 SHA를 쓴다. annotated 태그(claude-code-action v1)는 `git/ref/tags`의 `object.sha`가 태그 객체라 다르다

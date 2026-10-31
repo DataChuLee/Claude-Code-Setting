@@ -48,11 +48,11 @@ jobs:
           round=$((done_rounds + 1))
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "$ROUND_MARK 수정 라운드 $round/$MAX_ROUNDS 시작"
           echo "head=$head" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           ref: ${{ steps.guard.outputs.head }}
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: 의존성 (게이트 훅이 pytest·ruff·mypy를 실행)
@@ -76,12 +76,18 @@ jobs:
           fi
       - name: 시작 전 기준 (결과 확인용 — 라운드 표식 댓글 뒤)
         id: before
+        env:
+          BASE: ${{ github.event.repository.default_branch }}
         run: |
           echo "id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" | jq -s 'add | map(.id) | max // 0')" >> "$GITHUB_OUTPUT"
           echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          # 에이전트가 작업 트리의 판정 스크립트를 고쳐 자기를 통과시키지 못하게, 실행 전 사본을 쓴다
-          cp .github/scripts/expect_comment.py "$RUNNER_TEMP/"
-      - uses: anthropics/claude-code-action@v1
+          # 작업 트리는 PR 브랜치(이전 라운드 에이전트가 커밋한 코드)다. 뒤의 샌드박스 밖 단계가 그 코드를 돌리지 않게
+          # 판정·진단 스크립트는 기본 브랜치 판을 쓴다. 없으면 파일을 만들지 않는다 → 판정은 실패 쪽으로
+          for f in expect_comment.py agent_diagnose.py; do
+            git show "origin/$BASE:.github/scripts/$f" > "$RUNNER_TEMP/$f" || rm -f "$RUNNER_TEMP/$f"
+          done
+      - uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d  # v1
+        id: claude
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"  # 에이전트가 쓴 테스트·훅이 OAuth 토큰을 읽지 못하게
           # -p 실행은 메인 턴이 끝나면 종료된다 → reviewer를 백그라운드로 띄우면 결과를 못 받고 PR 없이 끝남 (실패 10)
@@ -100,7 +106,7 @@ jobs:
             --allowedTools "Read,Glob,Grep,Edit,Write,Skill,Agent,Task,Bash(git:*),Bash(python -m:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(gh pr comment:*)"
       - name: 게이트 기록 보관 (docs/LEARNING.md 관측)
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: gate-log
           path: .claude/state/gate-log.jsonl
@@ -118,6 +124,14 @@ jobs:
           fi
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" | jq -s add > comments.json
           env -u GH_TOKEN python "$RUNNER_TEMP/expect_comment.py" --after-id "$AFTER" --author "github-actions[bot]" --prefix "<!-- agent-fix -->" < comments.json
+      - name: 진단 — 에이전트가 멈춘 이유 (마지막 답변·거부된 도구)
+        if: failure() && steps.claude.outcome != 'skipped'  # 에이전트 전에 실패하면 진단할 것이 없다
+        env:
+          OUT: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          # 모델 출력 속 `::error::` 같은 줄이 워크플로 명령으로 해석되지 않게
+          t=$(openssl rand -hex 16); echo "::stop-commands::$t"; trap 'echo "::$t::"' EXIT
+          env -u GH_TOKEN python "$RUNNER_TEMP/agent_diagnose.py" "$OUT" .claude/state/gate-log.jsonl
       - name: 실패 알림
         if: failure() && steps.guard.outcome == 'success'
         env:
