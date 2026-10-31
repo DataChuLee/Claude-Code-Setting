@@ -24,10 +24,10 @@ jobs:
       PR: ${{ inputs.pr || github.event.pull_request.number }}
       MAX_CHANGED_LINES: 500
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           ref: refs/pull/${{ env.PR }}/head
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: 의존성
@@ -38,7 +38,20 @@ jobs:
       - run: python -m ruff check .
       - run: python -m ruff format --check .
       - name: mypy
-        run: python -m mypy $(ls -d src tests .claude/hooks .github/scripts 2>/dev/null)
+        run: |
+          # shellcheck disable=SC2046  # 있는 폴더만 인자로 넘기려는 의도된 단어 분리 (경로에 공백 없음)
+          python -m mypy $(ls -d src tests .claude/hooks .github/scripts 2>/dev/null)
+      - name: actionlint (워크플로 문법·shellcheck)
+        env:
+          V: 1.7.12
+          # 릴리스 actionlint_1.7.12_checksums.txt의 linux_amd64 값. 버전을 올리면 함께 바꾼다
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/actionlint.tgz" \
+            "https://github.com/rhysd/actionlint/releases/download/v$V/actionlint_${V}_linux_amd64.tar.gz"
+          echo "$SHA256  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
       - name: PR 크기
         # 사람용 문서(*.md)는 세지 않는다. 에이전트 동작을 바꾸는 md(.claude/ 아래, 모든 CLAUDE.md)는 센다
         env:
