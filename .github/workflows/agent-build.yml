@@ -33,7 +33,7 @@ jobs:
           python-version: "3.12"
       - name: 의존성 (게이트 훅이 pytest·ruff·mypy를 실행)
         run: |
-          pip install pytest ruff mypy
+          pip install pytest ruff mypy pyyaml
           if [ -d src ]; then pip install -e ".[dev]"; fi
       - name: 승인된 SPEC 꺼내기 (모델이 아니라 이 단계가 판단)
         env:
@@ -88,7 +88,18 @@ jobs:
           claude_args: |
             --max-turns 40
             --allowedTools "Read,Glob,Grep,Edit,Write,Skill,Agent,Task,Bash(git:*),Bash(python -m:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*)"
-      - name: 만든 PR 찾기
+      - name: 게이트 기록 보관 (docs/LEARNING.md 관측)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gate-log
+          path: .claude/state/gate-log.jsonl
+          include-hidden-files: true  # .claude는 숨김 폴더라 기본으로 빠진다
+          if-no-files-found: ignore
+          retention-days: 30
+          overwrite: true  # 같은 run의 재실행에서 이름 충돌로 실패하지 않게
+      # 이 단계는 실패하지 않는다. 판정은 다음 단계들의 `steps.pr.outputs.number == ''` 조건
+      - name: 결과 확인 — 만든 PR 찾기
         id: pr
         if: always()
         run: |

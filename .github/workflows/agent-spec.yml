@@ -34,6 +34,15 @@ jobs:
           if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
+      - name: 시작 전 마지막 댓글 id (결과 확인 기준)
+        id: before
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          echo "id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s 'add | map(.id) | max // 0')" >> "$GITHUB_OUTPUT"
+          # 에이전트(Write 권한)가 작업 트리의 판정 스크립트를 고쳐 자기를 통과시키지 못하게, 실행 전 사본을 쓴다
+          cp .github/scripts/expect_comment.py "$RUNNER_TEMP/"
       - uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ github.token }}
@@ -47,6 +56,14 @@ jobs:
           claude_args: |
             --max-turns 15
             --allowedTools "Read,Glob,Grep,Write,Skill,Bash(gh issue view:*),Bash(gh issue comment:*)"
+      - name: 결과 확인 — SPEC 댓글이 실제로 달렸는가 (success인데 조용히 끝남 방지, LEARNING.md)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          AFTER: ${{ steps.before.outputs.id }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s add > comments.json
+          env -u GH_TOKEN python "$RUNNER_TEMP/expect_comment.py" --after-id "$AFTER" --author "github-actions[bot]" --prefix "<!-- agent-spec -->" < comments.json
       - name: 실패 알림
         if: failure()
         env:

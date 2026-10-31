@@ -16,7 +16,10 @@ AI-Native 개발 하네스. 전체 계획 @../docs/PLAN.md · 설계 기록 docs
 ## 게이트 (훅이 강제)
 - 응답 종료 시: pytest·ruff·mypy·TODO 갱신 검사, 실패하면 최대 2회 재시도 후 멈춤
 - 커밋 시: reviewer가 본 코드와 지금 코드가 같아야 함
-- 상태·로그: `.claude/state/` (gate.json, review.json, gate-log.jsonl)
+- 상태·로그: `.claude/state/` (gate.json, review.json, gate-log.jsonl) · 요약 `python .claude/hooks/observe.py`
+
+## 실패 환류 (docs/LEARNING.md)
+실패 → HARNESS.md에 기록 → LEARNING.md 패턴 갱신 → 두 번째 발생부터 테스트·훅으로 강제
 
 ## 금지 (`.claude/hooks/guard.py` · settings.json deny)
 - 시크릿(.env, 키 파일, 토큰, KEY/TOKEN 환경변수) 읽기·쓰기·출력
