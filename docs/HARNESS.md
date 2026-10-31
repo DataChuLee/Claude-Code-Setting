@@ -305,7 +305,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`의 목적은 **OAuth 토큰 보호**다. `GITHUB_TOKEN`은 이미 `.git/config`에서 읽을 수 있으므로 숨기는 대상이 아니라 job 권한·Ruleset으로 묶는 대상
 - build·fix가 부른 리뷰 중에 소유자가 Ready를 누르면 진행 중 리뷰가 취소되고 build·fix run이 cancelled로 보인다 (새 리뷰는 돈다, 의도된 동작)
 - `--max-turns`는 서브에이전트(reviewer) 턴을 세지 않는다 → 그 부분은 `timeout-minutes`만 막음
-- action을 `@v1` 태그로 사용 (커밋 SHA 고정은 후속 과제)
+- ~~action을 `@v1` 태그로 사용 (커밋 SHA 고정은 후속 과제)~~ → 후속 처리 A에서 SHA 고정
 - "만든 PR 찾기"는 이전 실행이 남긴 같은 이슈의 열린 PR도 집을 수 있음
 
 ---
@@ -377,3 +377,18 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - build의 "결과 확인 — 만든 PR 찾기"는 실패하지 않는 단계다. 판정은 다음 단계들의 `if`가 한다. 구조 테스트는 이름 규칙으로 통과한다
 - 공개 저장소의 아티팩트는 로그인한 누구나 받을 수 있다. gate-log에는 reviewer 요약이 들어간다 (PR 본문에도 쓰이는 내용이고 시크릿은 없음)
 - 로컬 gate-log는 이 PC에만 있다. 여러 PC에서 작업하면 따로 모아야 한다
+
+---
+
+## 후속 처리 (Phase 1~5 이후)
+
+### A. 워크플로 공급망 — 2026-10-31
+- 외부 action 4종(claude-code-action v1, checkout v6, setup-python v6, upload-artifact v7)을 **커밋 SHA**로 고정. 태그는 주석으로 남긴다. SHA는 `gh api repos/<r>/commits/<tag>`로 확인
+  - 이유: 태그는 옮겨질 수 있다. 이 job들은 쓰기 권한 GITHUB_TOKEN과 OAuth 토큰을 쥔다
+  - 메이저 버전은 올리지 않았다(checkout·setup-python은 v7이 나와 있음). 올리는 것은 별도 변경으로
+- 구조 테스트 `test_external_action_is_pinned_to_commit_sha`: 외부 `uses:`(job 수준 재사용 워크플로 포함, `./` 제외)는 40자리 SHA여야 한다. 고정 전 16개 실패 확인 → 고정 후 통과
+- ci에 **actionlint v1.7.12**: 릴리스 checksums.txt의 sha256을 워크플로에 고정하고 검증한 뒤 실행. ubuntu 러너의 shellcheck도 함께 돈다
+  - 로컬 사전 실행(windows 바이너리 체크섬 검증, shellcheck-py): 지적 1건. ci의 `mypy $(ls -d …)`는 의도된 단어 분리라 이유를 달아 SC2046 무시
+- 한계: SHA를 올리는 것은 사람 몫이다(Dependabot 미설정). actionlint 다운로드는 GitHub 릴리스에 의존하지만 체크섬이 맞지 않으면 실패한다
+- 한계 (리뷰 🟡): 구조 테스트는 `workflows/`만 본다. composite action(`.github/actions/*/action.yml`)을 만들면 glob을 넓힌다. `docker://` uses는 지금 정규식에서 항상 실패(fail closed)하므로 쓰게 되면 `@sha256:` digest 형식을 따로 허용한다. 러너에 shellcheck가 빠지면 actionlint는 그 검사만 조용히 건너뛴다
+- SHA를 올릴 때는 `commits/<tag>`의 커밋 SHA를 쓴다. annotated 태그(claude-code-action v1)는 `git/ref/tags`의 `object.sha`가 태그 객체라 다르다
