@@ -52,8 +52,9 @@ rm -rf .git && git init
 ## GitHub 루프 (Phase 4)
 
 ```
-이슈 + 라벨 agent:spec   → SPEC 초안 댓글            (사람이 읽고 판단)
-라벨 agent:build         → 구현 → 게이트 → draft PR → ci + Claude 리뷰 댓글
+이슈 + 라벨 agent:spec   → SPEC 초안 댓글 (질문마다 제안. 고친 SPEC 재게시가 없으면 제안대로)
+SPEC에 👍 + agent:build  → 구현 → 게이트 → draft PR → ci + Claude 리뷰 댓글
+                           (봇 SPEC에 소유자 👍가 없으면 build가 멈춤)
 PR에 "@claude 반영해줘"  → 지적 반영 → push → ci + 재리뷰   (최대 2라운드)
 사람                     → Ready for review → 머지
 ```

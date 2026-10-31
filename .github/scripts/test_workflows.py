@@ -55,3 +55,15 @@ def test_agent_job_checks_outcome_then_notifies_on_failure(
     assert any("failure()" in c and "!failure()" not in c for c in notifies), (
         f"{job}: '결과 확인' 뒤에 failure()로 사람에게 알리는 단계가 없다"
     )
+
+
+def test_build_requires_owner_thumbs_up_before_agent() -> None:
+    # 봇 SPEC 승인은 모델이 아니라 에이전트 실행 전 단계가 판단한다 (LEARNING: 안전 조건을 모델 순종에 맡기지 않음)
+    doc = yaml.safe_load((WORKFLOWS / "agent-build.yml").read_text(encoding="utf-8"))
+    steps = doc["jobs"]["build"]["steps"]
+    agent = next(
+        i
+        for i, s in enumerate(steps)
+        if str(s.get("uses", "")).startswith("anthropics/claude-code-action")
+    )
+    assert any("spec_approval.py" in str(s.get("run", "")) for s in steps[:agent])

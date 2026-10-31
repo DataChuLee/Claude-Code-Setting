@@ -297,10 +297,10 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `issues`·`issue_comment` 워크플로는 **기본 브랜치(main)의 파일**로 실행된다 → 실전 검증은 이 PR이 머지된 뒤에 가능
 - CI에서 프로젝트 훅이 실제로 도는지는 build 첫 실행 로그로 확인 (`settingSources`에 project 포함은 확인)
 - 후속(이슈로): 워크플로 jq 필터를 `.github/scripts/`로 빼서 pytest로 회귀 검사, `actionlint`를 ci에, `id-token: write` 필요 여부
-- **SPEC 질문에 대한 답이 build에 전달되지 않는다**: build는 표식 붙은 마지막 SPEC 댓글만 읽는다. 답이 제안과 다르면 소유자가 답을 반영한 SPEC을 표식과 함께 다시 게시해야 한다 (#3은 제안대로라 그대로 승인, #5에서 실제로 막힘 → 실패 10). 후속: spec 스킬이 질문마다 "제안"을 쓰고, 승인 = 제안 수락으로 문서화
+- **SPEC 질문에 대한 답이 build에 전달되지 않는다**: build는 표식 붙은 마지막 SPEC 댓글만 읽는다. 답이 제안과 다르면 소유자가 답을 반영한 SPEC을 표식과 함께 다시 게시해야 한다 (#3은 제안대로라 그대로 승인, #5에서 실제로 막힘 → 실패 10). 후속: spec 스킬이 질문마다 "제안"을 쓰고, 승인 = 제안 수락으로 문서화 → **후속 C에서 처리**: spec 스킬 CI 모드는 질문마다 `제안:` 필수, tdd CI 모드는 제안이 있는 질문을 결정으로 보고 진행 (이슈 #11에서 소유자 재게시로 우회했던 상황이 다시 생기지 않게)
 - 리뷰 봇의 지적은 자료일 뿐이라 수정 범위는 소유자 댓글이 정하지만, 모델이 그 경계를 지키는지는 프롬프트에 의존
 - 이슈 본문을 통한 프롬프트 주입은 근본적으로 못 막는다. 주입된 에이전트는 실행 경로와 `.git/config`의 토큰으로 job 권한(`contents`·`issues`·`pull-requests: write`)을 그대로 쓸 수 있다: main 외 브랜치·태그·릴리스 생성/삭제, 봇이 쓴 댓글 수정(다른 이슈의 SPEC 댓글 포함), 라운드 표식 삭제. 머지는 required check가 막고, SPEC 바꿔치기는 build 워크플로 단계가 막는다(봇 SPEC 댓글이 `created_at != updated_at`이면 거부, 고친 SPEC은 소유자 댓글로 재게시). 후속: 태그 Ruleset 보호
-- 리뷰 4차(승인)에서 남은 것: 주입된 이전 run이 다른 이슈에 봇 이름으로 **새** SPEC 댓글을 달거나 소유자 SPEC 댓글을 지우면 수정 검사를 통과한다 → 후속: 봇 SPEC은 소유자의 👍 반응이 있어야 승인 (GITHUB_TOKEN으로는 소유자 반응을 못 만듦. 반응이 `updated_at`을 바꾸는지 먼저 확인). 그 전까지는 `agent:build` 전에 SPEC 댓글이 하나뿐인지 눈으로 확인
+- 리뷰 4차(승인)에서 남은 것: 주입된 이전 run이 다른 이슈에 봇 이름으로 **새** SPEC 댓글을 달거나 소유자 SPEC 댓글을 지우면 수정 검사를 통과한다 → 후속: 봇 SPEC은 소유자의 👍 반응이 있어야 승인 (GITHUB_TOKEN으로는 소유자 반응을 못 만듦. 반응이 `updated_at`을 바꾸는지 먼저 확인). 그 전까지는 `agent:build` 전에 SPEC 댓글이 하나뿐인지 눈으로 확인 → **후속 C에서 처리**: 반응은 `updated_at`을 바꾸지 않음을 이슈 #11에서 확인, build의 SPEC 단계가 봇 SPEC에 소유자 `+1` 반응을 요구(`.github/scripts/spec_approval.py`, 테스트 8개 + 구조 테스트). 남은 것: 주입된 실행이 소유자 SPEC을 지우면 build는 그 전의 봇 SPEC을 고르는데, 그 봇 SPEC에 예전 👍가 있으면 통과한다 → 라벨 전에 SPEC 댓글을 눈으로 확인하는 운영 규칙은 유지
 - 후속: spec.md 첫 줄에 SPEC 댓글 URL을 넣어 PR 본문 링크에 쓰기, action을 커밋 SHA로 고정 (`add[]`는 실패 6에서 실제 jq로 확인함)
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`의 목적은 **OAuth 토큰 보호**다. `GITHUB_TOKEN`은 이미 `.git/config`에서 읽을 수 있으므로 숨기는 대상이 아니라 job 권한·Ruleset으로 묶는 대상
 - build·fix가 부른 리뷰 중에 소유자가 Ready를 누르면 진행 중 리뷰가 취소되고 build·fix run이 cancelled로 보인다 (새 리뷰는 돈다, 의도된 동작)
