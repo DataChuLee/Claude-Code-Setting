@@ -205,7 +205,11 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 
 ### 알려진 한계
 - 리뷰 5차(승인)에서 남은 것: `2>C:/tools/git.exe`처럼 리다이렉트 대상이 git 경로이면 guard가 IndexError → run_guard가 차단 (안전한 쪽 실패, 이유 메시지만 엉뚱함). 떨어진 `> push.log`, PowerShell `*>`도 차단되는 오탐 → **이슈 #3에서 해결** (연산자만 있는 토큰이면 다음 토큰을 파일 이름으로 버림. IndexError는 현재 코드에서 재현되지 않음). PowerShell `*>`는 **일부러 차단 유지**: bash에서 `*`는 glob이라 `main` 파일이 있으면 main이 push 인자가 된다 (Phase 4 실패 9)
-- 리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환
+- ~~리뷰 2차(승인)에서 남은 것 — 후속 과제: `gh alias import`(alias set과 같은 부류), `gh pr create --draft -d=false`, `gh api ... pulls/1/merge`·graphql ready 전환~~ → **후속 B에서 처리 (2026-10-31)**: `gh alias`는 `list`만 허용, `-d=…` 차단, `gh api`의 `pulls/<n>/merge`·`markPullRequestReadyForReview`·`mergePullRequest`·`enablePullRequestAutoMerge` 차단. 테스트 9+5개 먼저 실패 확인(8개), `run_guard.py` 진입점으로도 확인
+  - **리뷰 1차 🔴 (❌) 우회 3건**: 여러 줄 GraphQL 쿼리(`SEGMENT_SPLIT`이 `\n`에서 나눠 mutation 줄이 gh segment가 아니게 됨), 변수 PR 번호(`pulls/$N/merge`), 따옴표 이어 붙이기(`mer''ge`) → api 검사는 **명령 전체**를, 따옴표·백슬래시·백틱을 지운 뒤 `re.I`로 본다. `pulls/[^/\s]+/merge`. 🟡 `enqueuePullRequest`(머지 큐) 추가, 하위 명령 앞 `-R/--repo` 플래그 건너뛰기(`gh pr -R o/r merge 1`이 통과하던 기존 구멍), 💡 `gh alias ls` 허용. 테스트 먼저 9개 실패 확인. 이번 수정은 "정의 → 연결 → 호출부" 3단계로, 단계마다 테스트가 돌아가는 상태를 유지했다
+  - 남은 원리적 한계는 그대로: `gh api`로 draft 아닌 PR 만들기(POST 본문의 `draft` 필드), 파일에서 읽거나 명령 치환으로 만든 GraphQL 쿼리(`-F query=@file`, `"$(cat q.txt)"`)의 mutation 이름, URL 인코딩 경로, 브랜치 머지(`POST repos/o/r/merges`, GraphQL `mergeBranch` — PR이 아니라 Ruleset 대상), push 대상을 설정으로 바꾸기 → Ruleset·사람 머지가 경계
+  - 보수적 오탐(감수): api 본문·댓글 속 mutation 이름, 머지 여부를 묻는 GET `pulls/1/merge`, `-d=true`
+  - 실수: `_check_gh`에서 새 상수를 **정의 전에 사용**하는 Edit을 먼저 했다("정의 먼저, 연결은 나중" 규칙 위반). 이름 조회가 `gh api` 분기에서만 일어나 도구 전체가 잠기진 않았고, PostToolUse ruff(F821)가 즉시 잡아 바로 정의를 추가했다 (LEARNING: guard 중간 상태 4번째)
 - heredoc 본문 속 명령 문자열(`gh pr new` 등)도 guard가 실제 명령으로 보고 막는다 (보수적 동작). 테스트 데이터는 파일 도구로 넘긴다
 - guard는 **명령줄 인자만** 본다: `git -c push.default=upstream push`, `git branch -u origin/main` 후 `git push`, `remote.origin.push` 설정으로 대상 바꾸기, `gh api repos/o/r/pulls`로 draft 아닌 PR 만들기는 못 막음 → 최종 경계는 GitHub Ruleset과 사람 머지
 - 이 브랜치의 Phase 1~2 리뷰(1~4차)는 리뷰 로그 도입 전이라 PR #1 본문은 이 문서 기록을 근거로 작성

@@ -107,6 +107,42 @@ BLOCKED = [
     ("gh alias set pc 'pr create'", "agent/1-x"),
     ("gh pr create --draft --draft=false --title x", "agent/1-x"),
     ('"C:\\Program Files\\GitHub CLI\\gh.exe" pr create --title x', "agent/1-x"),
+    # 후속 B: Phase 3 리뷰가 남긴 우회 (alias 정의·-d=false·gh api 머지·ready 전환)
+    # 후속 B 리뷰 1차 🔴: 여러 줄 GraphQL(줄 단위 segment 분리), 변수 PR 번호, 따옴표 이어 붙이기
+    (
+        "gh api graphql -f query='mutation {\n  mergePullRequest(input: {}) { clientMutationId }\n}'",
+        "agent/1-x",
+    ),
+    ("gh api repos/o/r/pulls/$N/merge -X PUT", "agent/1-x"),
+    ("gh api repos/o/r/pulls/1/mer''ge -X PUT", "agent/1-x"),
+    ("gh api repos/o/r/PULLS/1/MERGE -X PUT", "agent/1-x"),
+    (
+        "gh api graphql -f query='mutation { enqueuePullRequest(input: {}) { x } }'",
+        "agent/1-x",
+    ),
+    # 하위 명령 앞의 상속 플래그 (cobra 허용)
+    ("gh pr -R o/r merge 1", "agent/1-x"),
+    ("gh pr --repo o/r create --title x", "agent/1-x"),
+    ("gh pr --repo=o/r ready 1", "agent/1-x"),
+    ("gh pr --help=false merge 1", "agent/1-x"),
+    ("gh alias import aliases.yml", "agent/1-x"),
+    ("gh alias delete pc", "agent/1-x"),
+    ("gh pr create -d=false --title x", "agent/1-x"),
+    ("gh pr create --draft -d=false --title x", "agent/1-x"),
+    ("gh api -X PUT repos/o/r/pulls/1/merge", "agent/1-x"),
+    ("gh api repos/o/r/pulls/12/merge --method PUT", "agent/1-x"),
+    (
+        "gh api graphql -f query='mutation { markPullRequestReadyForReview(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+        "agent/1-x",
+    ),
+    (
+        "gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'",
+        "agent/1-x",
+    ),
+    (
+        "gh api graphql -F query=@automerge.graphql -f op=enablePullRequestAutoMerge",
+        "agent/1-x",
+    ),
 ]
 
 ALLOWED = [
@@ -146,6 +182,14 @@ ALLOWED = [
     ("git push origin agent/1-x >", "agent/1-x"),  # 연산자가 끝이어도 예외 없음
     ("git push origin --delete agent/1-x", "main"),
     ("gh pr view 3", "feature"),
+    ("gh alias list", "feature"),
+    ("gh alias ls", "feature"),
+    ("gh pr -R o/r view 1", "feature"),
+    ("gh pr --repo o/r create --draft --title x", "agent/1-x"),
+    ("gh api repos/o/r/pulls/1", "feature"),
+    ("gh api repos/o/r/pulls/1/files --paginate", "feature"),
+    ("gh api repos/o/r/issues/11/comments", "feature"),
+    ("gh api graphql -f query='query { viewer { login } }'", "feature"),
     ("env FOO=1 python app.py", "feature"),
     ("python -c \"print('hello')\"", "feature"),
     ("pip install python-dotenv", "feature"),
