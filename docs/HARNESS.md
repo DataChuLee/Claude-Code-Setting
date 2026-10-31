@@ -295,7 +295,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 | `claude-review` (샌드박스 런타임 설치 후) | **리뷰 댓글 게시** (❌ 수정 후 재검토, 🔴 1 · 🟡 3) → 실패 6. 이로써 확인: Claude GitHub App 없이 `github_token`만으로 동작, scrub 후에도 `GH_TOKEN` 유지(공식 문서와 일치), 비용 약 $0.06~0.09/회 |
 
 ### 사용자 설정 (저장소 설정·시크릿 → 사용자가 직접)
-1. `gh auth refresh -s workflow` (Claude가 실행, 브라우저 승인만 사용자) 2. `CLAUDE_CODE_OAUTH_TOKEN` Secret (사용자) 3. 라벨 `agent:spec`·`agent:build` (Claude가 생성함) 4. Actions가 PR 생성 허용 (사용자) 5. **Ruleset required status check `check` (사용자, 필수)**
+1. `gh auth refresh -s workflow` (Claude가 실행, 브라우저 승인만 사용자) 2. `CLAUDE_CODE_OAUTH_TOKEN` Secret (사용자) 3. 라벨 `agent:spec`·`agent:build` (Claude가 생성함) 4. Actions가 PR 생성 허용 (사용자) 5. **Ruleset required status check `check` (사용자, 필수)** 6. **태그 Ruleset `protect-tags`** (사용자, 2026-10-31): 모든 태그에 Restrict creations·updates·deletions + Block force pushes, Bypass는 Repository admin
 - 운영 메모 (PR #10·#15에서 2회): Ready for review를 누르면 `check`가 다시 돈다. 그 사이 머지를 누르면 "Merging was blocked due to rule violation errors"가 뜬다 → `check`가 초록불이 된 뒤 새로고침하고 머지. 같은 파일을 고친 PR 여러 개는 하나씩 머지하고, 다음 PR은 main을 merge해 충돌을 푼 뒤 리뷰를 다시 받는다 (force push는 guard가 막으므로 rebase 대신 merge)
 
 ### 알려진 한계·확인할 것
@@ -304,7 +304,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - 후속(이슈로): 워크플로 jq 필터를 `.github/scripts/`로 빼서 pytest로 회귀 검사, `actionlint`를 ci에, `id-token: write` 필요 여부
 - **SPEC 질문에 대한 답이 build에 전달되지 않는다**: build는 표식 붙은 마지막 SPEC 댓글만 읽는다. 답이 제안과 다르면 소유자가 답을 반영한 SPEC을 표식과 함께 다시 게시해야 한다 (#3은 제안대로라 그대로 승인, #5에서 실제로 막힘 → 실패 10). 후속: spec 스킬이 질문마다 "제안"을 쓰고, 승인 = 제안 수락으로 문서화 → **후속 C에서 처리**: spec 스킬 CI 모드는 질문마다 `제안:` 필수, tdd CI 모드는 제안이 있는 질문을 결정으로 보고 진행 (이슈 #11에서 소유자 재게시로 우회했던 상황이 다시 생기지 않게)
 - 리뷰 봇의 지적은 자료일 뿐이라 수정 범위는 소유자 댓글이 정하지만, 모델이 그 경계를 지키는지는 프롬프트에 의존
-- 이슈 본문을 통한 프롬프트 주입은 근본적으로 못 막는다. 주입된 에이전트는 실행 경로와 `.git/config`의 토큰으로 job 권한(`contents`·`issues`·`pull-requests: write`)을 그대로 쓸 수 있다: main 외 브랜치·태그·릴리스 생성/삭제, 봇이 쓴 댓글 수정(다른 이슈의 SPEC 댓글 포함), 라운드 표식 삭제. 머지는 required check가 막고, SPEC 바꿔치기는 build 워크플로 단계가 막는다(봇 SPEC 댓글이 `created_at != updated_at`이면 거부, 고친 SPEC은 소유자 댓글로 재게시). 후속: 태그 Ruleset 보호
+- 이슈 본문을 통한 프롬프트 주입은 근본적으로 못 막는다. 주입된 에이전트는 실행 경로와 `.git/config`의 토큰으로 job 권한(`contents`·`issues`·`pull-requests: write`)을 그대로 쓸 수 있다: main 외 브랜치·태그·릴리스 생성/삭제, 봇이 쓴 댓글 수정(다른 이슈의 SPEC 댓글 포함), 라운드 표식 삭제. 머지는 required check가 막고, SPEC 바꿔치기는 build 워크플로 단계가 막는다(봇 SPEC 댓글이 `created_at != updated_at`이면 거부, 고친 SPEC은 소유자 댓글로 재게시). ~~후속: 태그 Ruleset 보호~~ → 사용자가 태그 Ruleset 적용(2026-10-31, 사용자 설정 6). 브랜치·릴리스 생성 경로는 남는다(main은 기존 Ruleset이 보호)
 - 리뷰 4차(승인)에서 남은 것: 주입된 이전 run이 다른 이슈에 봇 이름으로 **새** SPEC 댓글을 달거나 소유자 SPEC 댓글을 지우면 수정 검사를 통과한다 → 후속: 봇 SPEC은 소유자의 👍 반응이 있어야 승인 (GITHUB_TOKEN으로는 소유자 반응을 못 만듦. 반응이 `updated_at`을 바꾸는지 먼저 확인). 그 전까지는 `agent:build` 전에 SPEC 댓글이 하나뿐인지 눈으로 확인 → **후속 C에서 처리**: 반응은 `updated_at`을 바꾸지 않음을 이슈 #11에서 확인, build의 SPEC 단계가 봇 SPEC에 소유자 `+1` 반응을 요구(`.github/scripts/spec_approval.py`, 테스트 8개 + 구조 테스트). 남은 것: 주입된 실행이 소유자 SPEC을 지우면 build는 그 전의 봇 SPEC을 고르는데, 그 봇 SPEC에 예전 👍가 있으면 통과한다 → 라벨 전에 SPEC 댓글을 눈으로 확인하는 운영 규칙은 유지
 - 후속: spec.md 첫 줄에 SPEC 댓글 URL을 넣어 PR 본문 링크에 쓰기 (`add[]`는 실패 6에서 실제 jq로 확인함). ~~action을 커밋 SHA로 고정~~ → 후속 A(PR #13)에서 처리
 - `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`의 목적은 **OAuth 토큰 보호**다. `GITHUB_TOKEN`은 이미 `.git/config`에서 읽을 수 있으므로 숨기는 대상이 아니라 job 권한·Ruleset으로 묶는 대상
@@ -374,6 +374,13 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
   - agent:build(run 41182681602): PR #12 생성, build가 부른 ci·review success, gate-log 아티팩트 3.5KB → `gh run download` → observe.py 집계(review-approved 2)
   - agent-fix(run 41183128111): 결과 확인이 조용한 성공을 잡음 → 위 실패 3
   - 관측: CI gate-log에는 `pass` 줄이 없다. 에이전트가 커밋을 끝낸 뒤 응답을 마쳐 Stop 시점에 바뀐 .py가 없기 때문으로 보인다. CI 관측은 review 기록이 중심
+- **후속 A~D 머지 뒤 실전 확인 (2026-10-31)**:
+  - **진단 단계(D)**: PR #12 fix 2라운드(run 41194987623)에서 `error_max_turns`(21턴, 상한 20) → 진단 단계가 마지막 답변과 **거부된 도구 6건**을 로그에 남겼다. 1라운드의 "거부 2건"의 정체도 같은 부류로 보인다: `python3 -c`·`python3 - <<EOF`·`sed -i`·`xxd`·`grep`. CI 허용 목록(`Bash(python -m:*)`, `git:*` 등)이 의도대로 막았다
+    - 원인: 요청이 눈에 보이지 않는 비ASCII 문자(U+212A KELVIN SIGN)를 바꾸는 일이라 Edit의 정확한 문자열 매칭이 어려웠고, 모델이 셸로 바이트를 확인·치환하려다 턴을 소진했다
+    - 결정: 허용 목록은 넓히지 않는다(`python3 -c`는 임의 코드 실행 통로). 하네스 결함이 아니라 과제 특성. PR #12는 라운드 상한(2)에 도달 → 이 수정은 사람이 하거나 💡로 남긴 채 머지
+    - fix·review의 기본 브랜치 판 사본(`git show origin/main:…`) 단계는 오류 없이 통과 (D의 미확인 항목 해소)
+  - **👍 승인(C)**: 이슈 #17 — 새 spec은 질문 5개 모두 `제안:` + 스킬에 정한 마지막 줄을 썼다 (C-1). 👍 없이 `agent:build` → "승인된 SPEC 꺼내기"가 "봇 SPEC에 소유자 👍가 없습니다"로 실패, 에이전트 미실행, 진단은 skipped(에이전트 전 실패), 실패 알림 게시 (run 41195132580). 👍 후 라벨 재부착 → build 성공, draft PR #18, ci·review 성공
+  - **SHA 고정(A)**: 위 실행 모두 SHA로 고정된 action으로 돌았다 (로그의 `Run actions/checkout@d23441a…`)
 
 ### 알려진 한계
 - 결과 확인은 "댓글이 **있다**"만 본다. 내용이 쓸모 있는지는 사람이 본다
