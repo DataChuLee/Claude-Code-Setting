@@ -38,7 +38,8 @@ def test_slug_accented_char_is_treated_as_separator():
 
 
 def test_slug_kelvin_sign_is_not_lowercased_into_ascii():
-    assert slug_of("K") == "issue"
+    # KELVIN SIGN(U+212A)은 lower()하면 ASCII k가 된다. 소스에는 이스케이프로만 적는다.
+    assert slug_of("\N{KELVIN SIGN}") == "issue"
 
 
 def test_slug_korean_only_falls_back_to_issue():
