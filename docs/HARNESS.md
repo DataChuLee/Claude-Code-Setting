@@ -313,7 +313,7 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 ## Phase 5. 관측과 개선 — 2026-10-31
 
 ### 만든 것
-- `docs/LEARNING.md`: 환류 절차와 실패 패턴 표 (HARNESS 실패 약 40건을 9개 패턴으로 묶음)
+- `docs/LEARNING.md`: 환류 절차와 실패 패턴 표 (HARNESS 실패 약 40건을 10개 패턴으로 묶음, 실전 확인 뒤 1개 추가)
 - `.claude/hooks/observe.py`: gate-log.jsonl 요약 (결과별 횟수, block·escalate된 검사, 리뷰 거절률, 에스컬레이션 세션)
 - CI 기록 보관: build·fix가 gate-log를 아티팩트 `gate-log`로 30일 동안 올림
 - 환류 실행: "성공인데 조용히 끝남" → `결과 확인` 단계 (spec·review·fix) + 구조 테스트 `.github/scripts/test_workflows.py`
@@ -340,6 +340,18 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
    - observe.py: 없는 파일을 넘기면 조용히 0건 표를 내던 것 → stderr에 경고하고 exit 1 (테스트 먼저 실패 확인)
    - 💡도 반영: 구조 테스트가 `!failure()`와 `*.yaml`을 처리, ci mypy 대상에 `.github/scripts` 추가, 아티팩트 `overwrite: true`(재실행 시 이름 충돌 방지)
    - 교훈: 결과 확인 장치도 "검사받는 쪽이 검사기를 고칠 수 있는가"를 본다. Phase 4 실패 7(PR 쪽 ci.yml)과 같은 부류
+3. **실전 확인 중 fix가 "조용히" 끝남 — 결과 확인이 잡았지만 이유를 알 수 없었다** (이슈 #11 → PR #12, fix run 41183128111)
+   - PR #12에 소유자 `@claude`로 작은 수정(테스트 속 비ASCII 문자 이스케이프)을 요청 → 에이전트 9턴, success, **권한 거부 2건**, push 없음, 이유 댓글 없음
+   - 새 "결과 확인" 단계가 exit 1로 잡았고 실패 알림이 나갔다 → Phase 5 장치가 실전에서 의도대로 동작
+   - 그러나 fix에는 build의 "멈춘 이유" 진단 단계가 없어서 **무엇이 거부됐는지 로그에 없었다**. P4 실패 10 2차(build)와 같은 실패의 두 번째 발생 → LEARNING 절차 3번
+   - 대응: build에만 인라인 jq로 있던 진단을 `.github/scripts/agent_diagnose.py`로 옮겨 테스트로 고정(6개). spec·fix·review의 claude 단계에 `id: claude`, `if: failure() && steps.claude.outcome != 'skipped'` 진단 단계 추가. 구조 테스트 `test_agent_job_diagnoses_why_it_stopped`가 모든 에이전트 job에 강제 (먼저 4개 job 실패 확인)
+   - **리뷰 1차 🔴 (❌)**: 처음엔 "정보 출력일 뿐"이라며 작업 트리의 스크립트를 그대로 돌렸다. 그러나 이 단계는 **샌드박스·ENV_SCRUB 밖의 run 단계**다. 에이전트가 파일을 바꾸면 `id-token: write` job의 OIDC 요청 변수를 쓰거나 `$GITHUB_ENV`로 다음 단계(GH_TOKEN 보유)를 조작할 수 있다. 인라인 jq일 때는 없던 구멍을 리팩터링이 만들었다 → spec·build(기본 브랜치 체크아웃)는 에이전트 실행 전 `$RUNNER_TEMP` 사본, **PR 브랜치에서 도는 review·fix는 기본 브랜치 판**(`git show origin/<default>:…`)으로 판정·진단. 없으면 파일을 만들지 않아 판정은 실패 쪽으로 간다
+   - **리뷰 2차 🔴 (❌)**: 처음엔 fix도 `cp`로 사본을 떴는데, fix의 작업 트리는 PR 브랜치라 **이전 라운드 에이전트가 커밋한 스크립트**가 사본이 된다(한 라운드 늦을 뿐 같은 구멍) → review와 같은 기본 브랜치 판으로. 구조 테스트: `checkout`에 `ref`가 있는 job은 사본을 `git show "origin/…"`로 떠야 한다 (fix만 실패 먼저 확인)
+   - 같은 김에 review의 판정 스크립트도 기본 브랜치 판으로 바꿨다 → Phase 5 한계 "PR이 판정 스크립트를 바꾸면 자기를 통과시킬 수 있다"가 닫힘
+   - 구조 테스트 강화: 진단 단계는 claude 뒤·`failure()`/`always()`·`::stop-commands::`·사본 실행, 그리고 **에이전트 뒤 단계가 작업 트리의 `.github/scripts/*.py`를 실행하면 실패** (먼저 8개 실패 확인)
+   - 🟡 반영: 에이전트 전에 실패하면(라운드 상한·fork 거부) 진단을 건너뛴다(`steps.claude.outcome != 'skipped'`). 예상 밖 형식(`permission_denials`가 숫자·문자열 원소)에서도 종료·답변 줄은 남긴다 (테스트 먼저 실패 확인)
+   - 교훈: **로직을 워크플로 밖 파일로 옮기는 리팩터링은 "누가 그 파일을 바꿀 수 있나"를 바꾼다.** 테스트 가능성을 얻는 대신 실행 경계를 다시 봐야 한다
+   - 거부된 2건의 정체는 이 수정이 main에 들어간 뒤 PR #12의 2라운드로 확인한다
 
 ### 검증
 - TDD Red: 구조 테스트가 기존 워크플로 4개 job(build·fix·spec·review) 모두에서 실패하는 것을 확인 → 단계 추가 후 통과
@@ -349,11 +361,19 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `observe.py`를 실제 로컬 로그에 실행 → 관측 메모 (LEARNING.md)
 - 전체 pytest(193)·ruff·mypy 통과
 - 아직 확인하지 못한 것: 실제 CI 실행 (`issues`·`issue_comment` 워크플로는 main의 파일로 돈다 → 머지 후 agent:spec 이슈 한 번)
+- **실전 확인 (2026-10-31, 이슈 #11)**:
+  - PR #10 자신의 review: 결과 확인 success (PR 이벤트는 PR 쪽 워크플로로 돈다)
+  - agent:spec(run 41175394358): 결과 확인 success, SPEC 댓글 게시
+  - 봇 SPEC 댓글에 👍 반응 → `updated_at` 변화 없음 확인 (후속 C-2 설계 근거)
+  - SPEC 질문 5개는 "제안대로 결정"을 소유자 댓글로 재게시 (P4 실패 10 1차 재현 방지. 후속 C-1에서 절차화)
+  - agent:build(run 41182681602): PR #12 생성, build가 부른 ci·review success, gate-log 아티팩트 3.5KB → `gh run download` → observe.py 집계(review-approved 2)
+  - agent-fix(run 41183128111): 결과 확인이 조용한 성공을 잡음 → 위 실패 3
+  - 관측: CI gate-log에는 `pass` 줄이 없다. 에이전트가 커밋을 끝낸 뒤 응답을 마쳐 Stop 시점에 바뀐 .py가 없기 때문으로 보인다. CI 관측은 review 기록이 중심
 
 ### 알려진 한계
 - 결과 확인은 "댓글이 **있다**"만 본다. 내용이 쓸모 있는지는 사람이 본다
 - fix의 결과 확인: head가 바뀌었거나 봇 댓글이 있으면 통과. 라운드 표식은 기준 id보다 앞이라 세지 않는다
-- review의 판정 스크립트는 PR head의 것이다. **PR이 `expect_comment.py`를 바꾸면 자기 자신을 통과시킬 수 있다**(P4 실패 7의 ci.yml 한계와 같은 부류). spec·fix는 에이전트 실행 전 사본을 쓴다(fix 사본은 PR head 기준이라 같은 실행 안의 변조만 막는다. 이전 라운드가 커밋한 변경은 review와 같은 한계). `.git/config` 토큰을 읽을 수 있는 것은 에이전트 단계에 이미 있는 위험과 같은 부류이고, fork PR은 기존 단계가 거부한다
+- ~~review의 판정 스크립트는 PR head의 것이다~~ → 실패 3에서 기본 브랜치 판으로 바꿈. 다만 **워크플로 파일 자체**는 `pull_request` 경로에서 PR 쪽 것으로 돈다(P4 실패 7과 같은 한계, 사람 리뷰가 경계). spec·build는 에이전트 실행 전 사본, PR 브랜치에서 도는 review·fix는 기본 브랜치 판을 쓴다(실패 3). 구조 테스트는 `.github/scripts/*.py` 경로 문자열만 본다(`python -m`, `.sh`, `.claude/hooks`를 에이전트 뒤에 실행하는 단계가 생기면 범위를 넓힌다). `.git/config` 토큰을 읽을 수 있는 것은 에이전트 단계에 이미 있는 위험과 같은 부류이고, fork PR은 기존 단계가 거부한다
 - build의 "결과 확인 — 만든 PR 찾기"는 실패하지 않는 단계다. 판정은 다음 단계들의 `if`가 한다. 구조 테스트는 이름 규칙으로 통과한다
 - 공개 저장소의 아티팩트는 로그인한 누구나 받을 수 있다. gate-log에는 reviewer 요약이 들어간다 (PR 본문에도 쓰이는 내용이고 시크릿은 없음)
 - 로컬 gate-log는 이 PC에만 있다. 여러 PC에서 작업하면 따로 모아야 한다

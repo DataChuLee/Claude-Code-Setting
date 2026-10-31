@@ -17,6 +17,7 @@ HARNESS.md는 사건 기록이다. 이 문서는 그 사건들을 **패턴**으�
 ## 패턴 표
 | 패턴 | 발생 (HARNESS) | 대응 | 상태 |
 |---|---|---|---|
+| **멈춘 이유가 로그에 없음**: 결과가 없다는 건 알지만 무엇이 거부·실패했는지 모름 | P4 실패 10 2차(build), P5 실패 3(fix 실전) | `.github/scripts/agent_diagnose.py` + 구조 테스트 `test_agent_job_diagnoses_why_it_stopped`가 모든 에이전트 job에 진단 단계를 강제 | 강제됨 (2회째에 환류) |
 | **성공인데 조용히 끝남**: 에이전트가 success로 끝났지만 결과물(PR·댓글)이 없음 | P4 실패 5(review), 실패 10(build 2차·3차) | 모든 claude-code-action job 뒤에 `결과 확인` 단계와 `failure()` 알림. `.github/scripts/test_workflows.py`가 구조를 강제하고, `expect_comment.py`가 새 댓글을 확인 | 강제됨 (Phase 5) |
 | **guard 문자열 우회·오탐**: 명령줄을 글자로 읽어 생기는 구멍과 오탐 | P1 3·4·5, P2 4, P3 1·2·4, P3 리뷰 3~5차, P4 9 | 우회 사례마다 `test_guard.py`의 BLOCKED·ALLOWED에 추가 (회귀 테스트) | 강제됨. 원리적 한계(임의 Python, 설정으로 push 대상 바꾸기)는 Ruleset과 사람 머지가 최종 경계 |
 | **로컬과 CI의 차이**: 권한 모드, 보호 경로, OS가 달라 로컬에서만 동작 | P4 실패 8·10(보호 경로 `.claude/`), 실패 10 4차(`SubagentHandback`은 auto 모드 전용), 실패 5(샌드박스 런타임) | 훅을 도구 이름 하나에만 걸지 않는다 (`SubagentStop` 병행, `test_gate.py`). ci가 Linux에서 전체 테스트 | 부분: 실제 CI 실행으로만 드러나는 것이 남음 |

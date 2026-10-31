@@ -41,9 +41,10 @@ jobs:
           ISSUE: ${{ github.event.issue.number }}
         run: |
           echo "id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s 'add | map(.id) | max // 0')" >> "$GITHUB_OUTPUT"
-          # 에이전트(Write 권한)가 작업 트리의 판정 스크립트를 고쳐 자기를 통과시키지 못하게, 실행 전 사본을 쓴다
-          cp .github/scripts/expect_comment.py "$RUNNER_TEMP/"
+          # 에이전트(Write 권한)가 작업 트리의 판정·진단 스크립트를 고쳐도 뒤의 샌드박스 밖 단계가 그 코드를 돌리지 않게, 실행 전 사본을 쓴다
+          cp .github/scripts/expect_comment.py .github/scripts/agent_diagnose.py "$RUNNER_TEMP/"
       - uses: anthropics/claude-code-action@v1
+        id: claude
         env:
           GH_TOKEN: ${{ github.token }}
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"  # 하위 프로세스·훅에서 Anthropic·Actions 자격 제거
@@ -64,6 +65,14 @@ jobs:
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s add > comments.json
           env -u GH_TOKEN python "$RUNNER_TEMP/expect_comment.py" --after-id "$AFTER" --author "github-actions[bot]" --prefix "<!-- agent-spec -->" < comments.json
+      - name: 진단 — 에이전트가 멈춘 이유 (마지막 답변·거부된 도구)
+        if: failure() && steps.claude.outcome != 'skipped'  # 에이전트 전에 실패하면 진단할 것이 없다
+        env:
+          OUT: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          # 모델 출력 속 `::error::` 같은 줄이 워크플로 명령으로 해석되지 않게
+          t=$(openssl rand -hex 16); echo "::stop-commands::$t"; trap 'echo "::$t::"' EXIT
+          env -u GH_TOKEN python "$RUNNER_TEMP/agent_diagnose.py" "$OUT" .claude/state/gate-log.jsonl
       - name: 실패 알림
         if: failure()
         env:
