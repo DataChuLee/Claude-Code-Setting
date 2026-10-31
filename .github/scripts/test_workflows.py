@@ -157,3 +157,11 @@ def test_build_requires_owner_thumbs_up_before_agent() -> None:
         if str(s.get("uses", "")).startswith("anthropics/claude-code-action")
     )
     assert any("spec_approval.py" in str(s.get("run", "")) for s in steps[:agent])
+
+
+def test_spec_outcome_check_runs_format_check_copy() -> None:
+    # 질문마다 제안 — 스킬 문장이 아니라 결과 확인 단계가 검사한다 (LEARNING: SPEC 답 전달 2회째)
+    doc = yaml.safe_load((WORKFLOWS / "agent-spec.yml").read_text(encoding="utf-8"))
+    steps = doc["jobs"]["spec"]["steps"]
+    check = next(s for s in steps if str(s.get("name", "")).startswith("결과 확인"))
+    assert '"$RUNNER_TEMP/spec_format.py"' in str(check.get("run", ""))

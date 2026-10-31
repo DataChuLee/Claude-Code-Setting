@@ -42,7 +42,7 @@ jobs:
         run: |
           echo "id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s 'add | map(.id) | max // 0')" >> "$GITHUB_OUTPUT"
           # 에이전트(Write 권한)가 작업 트리의 판정·진단 스크립트를 고쳐도 뒤의 샌드박스 밖 단계가 그 코드를 돌리지 않게, 실행 전 사본을 쓴다
-          cp .github/scripts/expect_comment.py .github/scripts/agent_diagnose.py "$RUNNER_TEMP/"
+          cp .github/scripts/expect_comment.py .github/scripts/agent_diagnose.py .github/scripts/spec_format.py "$RUNNER_TEMP/"
       - uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d  # v1
         id: claude
         env:
@@ -57,7 +57,7 @@ jobs:
           claude_args: |
             --max-turns 15
             --allowedTools "Read,Glob,Grep,Write,Skill,Bash(gh issue view:*),Bash(gh issue comment:*)"
-      - name: 결과 확인 — SPEC 댓글이 실제로 달렸는가 (success인데 조용히 끝남 방지, LEARNING.md)
+      - name: 결과 확인 — SPEC 댓글이 달렸고 질문마다 제안이 있는가 (LEARNING.md)
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
@@ -65,6 +65,9 @@ jobs:
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" | jq -s add > comments.json
           env -u GH_TOKEN python "$RUNNER_TEMP/expect_comment.py" --after-id "$AFTER" --author "github-actions[bot]" --prefix "<!-- agent-spec -->" < comments.json
+          # 제안 없는 질문은 build를 멈추게 한다 (SPEC 답 전달 — 2회째라 기계 검사)
+          jq -r '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- agent-spec -->")))] | last | .body // ""' comments.json \
+            | env -u GH_TOKEN python "$RUNNER_TEMP/spec_format.py"
       - name: 진단 — 에이전트가 멈춘 이유 (마지막 답변·거부된 도구)
         if: failure() && steps.claude.outcome != 'skipped'  # 에이전트 전에 실패하면 진단할 것이 없다
         env:
