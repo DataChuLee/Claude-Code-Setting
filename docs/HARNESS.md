@@ -307,3 +307,53 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
 - `--max-turns`는 서브에이전트(reviewer) 턴을 세지 않는다 → 그 부분은 `timeout-minutes`만 막음
 - action을 `@v1` 태그로 사용 (커밋 SHA 고정은 후속 과제)
 - "만든 PR 찾기"는 이전 실행이 남긴 같은 이슈의 열린 PR도 집을 수 있음
+
+---
+
+## Phase 5. 관측과 개선 — 2026-10-31
+
+### 만든 것
+- `docs/LEARNING.md`: 환류 절차와 실패 패턴 표 (HARNESS 실패 약 40건을 9개 패턴으로 묶음)
+- `.claude/hooks/observe.py`: gate-log.jsonl 요약 (결과별 횟수, block·escalate된 검사, 리뷰 거절률, 에스컬레이션 세션)
+- CI 기록 보관: build·fix가 gate-log를 아티팩트 `gate-log`로 30일 동안 올림
+- 환류 실행: "성공인데 조용히 끝남" → `결과 확인` 단계 (spec·review·fix) + 구조 테스트 `.github/scripts/test_workflows.py`
+
+### 설계
+| 결정 | 이유 |
+|---|---|
+| 두 번째 발생부터 강제 장치로. 강한 순서는 테스트 > 훅 > 워크플로 단계 > 문장 | Phase 1 회고와 같다: 말로만 한 지시는 방치된다. 첫 발생은 우연일 수 있어 기록만 한다 |
+| 환류를 **구조 테스트**로 | 결과 확인 단계 자체는 기존 워크플로만 고친다. 테스트는 앞으로 만들 에이전트 워크플로까지 막는다 |
+| "새 댓글"을 시각이 아니라 **댓글 id**로 판정 | 러너 시계와 GitHub 시계가 어긋나도 판정이 틀리지 않는다. id는 단조 증가 |
+| 작성자는 REST 이름 `github-actions[bot]` (GraphQL은 `github-actions`) | 두 API를 섞으면 조건이 조용히 어긋난다. 테스트로 고정 |
+| 판정 스크립트는 `env -u GH_TOKEN`으로 실행 | 토큰이 필요한 일(댓글 받기)과 판정을 분리 |
+| claude-review에 실패 알림 추가 | build·fix가 workflow_call로 부르면 review job의 실패가 PR 체크에 안 보인다. 구조 테스트 (b) 조건이 이 누락을 잡는다 |
+| observe.py는 hooks 폴더, 기본 경로는 스크립트 안 | 기존 테스트·mypy 대상에 그대로 들어감. 명령줄에 상태 폴더 경로가 나오지 않아 guard에 걸리지 않는다 |
+| 아티팩트 `include-hidden-files: true` | upload-artifact는 숨김 파일을 기본으로 뺀다(공식 README, 현재 v7). `.claude/`는 숨김 폴더 |
+| retro 스킬·대시보드는 만들지 않음 | 절차 하나와 표 하나로 충분. 필요해지면 그때 만든다 |
+
+### 실패와 해결
+1. HARNESS에 이 절을 셸 heredoc으로 덧붙이려다 guard에 막힘: 본문에 상태 폴더 경로 글자가 들어 있었다. Phase 3 한계에 적어 둔 보수적 동작 그대로다 → 문서는 파일 도구로 쓴다 (LEARNING: guard 오탐 패턴, 기존 대응으로 충분)
+2. **reviewer 1차(승인) 🟡 5건 반영**
+   - **검사받는 쪽이 판정 스크립트를 고칠 수 있었다**: spec·fix 에이전트는 Write 권한이 있고 `.github/scripts/`는 보호 경로가 아니다 → 에이전트 실행 전에 `$RUNNER_TEMP`로 복사해 둔 사본으로 판정
+   - fix 결과 확인이 "봇 댓글 아무거나"로 통과했다. 그 사이 달린 리뷰 댓글이나 알림도 셀 수 있었다 → 프롬프트에 `<!-- agent-fix -->` 표식을 넣고 그 표식으로 확인
+   - LEARNING 표: guard 잠김에 P4 9를 추가하고 상태를 `한계`로 바꿈(이유 기재), "안전 조건을 모델 순종에 맡김" 패턴 추가
+   - observe.py: 없는 파일을 넘기면 조용히 0건 표를 내던 것 → stderr에 경고하고 exit 1 (테스트 먼저 실패 확인)
+   - 💡도 반영: 구조 테스트가 `!failure()`와 `*.yaml`을 처리, ci mypy 대상에 `.github/scripts` 추가, 아티팩트 `overwrite: true`(재실행 시 이름 충돌 방지)
+   - 교훈: 결과 확인 장치도 "검사받는 쪽이 검사기를 고칠 수 있는가"를 본다. Phase 4 실패 7(PR 쪽 ci.yml)과 같은 부류
+
+### 검증
+- TDD Red: 구조 테스트가 기존 워크플로 4개 job(build·fix·spec·review) 모두에서 실패하는 것을 확인 → 단계 추가 후 통과
+- 구조 테스트 (b): claude-review에서 알림 단계를 뺀 YAML을 넣으면 "failure()로 알리는 단계가 없다"로 실패
+- 일부러 실패시키기: 표식 없는 봇 댓글 JSON → `expect_comment.py` exit 1, 이유 출력
+- 워크플로의 jq 식 `add | map(.id) | max // 0`: 실제 jq(파이썬 바인딩)로 빈 배열 → 0, 여러 페이지 → 최댓값 확인
+- `observe.py`를 실제 로컬 로그에 실행 → 관측 메모 (LEARNING.md)
+- 전체 pytest(193)·ruff·mypy 통과
+- 아직 확인하지 못한 것: 실제 CI 실행 (`issues`·`issue_comment` 워크플로는 main의 파일로 돈다 → 머지 후 agent:spec 이슈 한 번)
+
+### 알려진 한계
+- 결과 확인은 "댓글이 **있다**"만 본다. 내용이 쓸모 있는지는 사람이 본다
+- fix의 결과 확인: head가 바뀌었거나 봇 댓글이 있으면 통과. 라운드 표식은 기준 id보다 앞이라 세지 않는다
+- review의 판정 스크립트는 PR head의 것이다. **PR이 `expect_comment.py`를 바꾸면 자기 자신을 통과시킬 수 있다**(P4 실패 7의 ci.yml 한계와 같은 부류). spec·fix는 에이전트 실행 전 사본을 쓴다(fix 사본은 PR head 기준이라 같은 실행 안의 변조만 막는다. 이전 라운드가 커밋한 변경은 review와 같은 한계). `.git/config` 토큰을 읽을 수 있는 것은 에이전트 단계에 이미 있는 위험과 같은 부류이고, fork PR은 기존 단계가 거부한다
+- build의 "결과 확인 — 만든 PR 찾기"는 실패하지 않는 단계다. 판정은 다음 단계들의 `if`가 한다. 구조 테스트는 이름 규칙으로 통과한다
+- 공개 저장소의 아티팩트는 로그인한 누구나 받을 수 있다. gate-log에는 reviewer 요약이 들어간다 (PR 본문에도 쓰이는 내용이고 시크릿은 없음)
+- 로컬 gate-log는 이 PC에만 있다. 여러 PC에서 작업하면 따로 모아야 한다
