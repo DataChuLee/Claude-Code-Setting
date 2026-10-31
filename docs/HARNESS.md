@@ -374,6 +374,13 @@ PLAN.md 진행 규칙 4에 따라 Phase마다 누적한다.
   - agent:build(run 41182681602): PR #12 생성, build가 부른 ci·review success, gate-log 아티팩트 3.5KB → `gh run download` → observe.py 집계(review-approved 2)
   - agent-fix(run 41183128111): 결과 확인이 조용한 성공을 잡음 → 위 실패 3
   - 관측: CI gate-log에는 `pass` 줄이 없다. 에이전트가 커밋을 끝낸 뒤 응답을 마쳐 Stop 시점에 바뀐 .py가 없기 때문으로 보인다. CI 관측은 review 기록이 중심
+- **후속 A~D 머지 뒤 실전 확인 (2026-10-31)**:
+  - **진단 단계(D)**: PR #12 fix 2라운드(run 41194987623)에서 `error_max_turns`(21턴, 상한 20) → 진단 단계가 마지막 답변과 **거부된 도구 6건**을 로그에 남겼다. 1라운드의 "거부 2건"의 정체도 같은 부류로 보인다: `python3 -c`·`python3 - <<EOF`·`sed -i`·`xxd`·`grep`. CI 허용 목록(`Bash(python -m:*)`, `git:*` 등)이 의도대로 막았다
+    - 원인: 요청이 눈에 보이지 않는 비ASCII 문자(U+212A KELVIN SIGN)를 바꾸는 일이라 Edit의 정확한 문자열 매칭이 어려웠고, 모델이 셸로 바이트를 확인·치환하려다 턴을 소진했다
+    - 결정: 허용 목록은 넓히지 않는다(`python3 -c`는 임의 코드 실행 통로). 하네스 결함이 아니라 과제 특성. PR #12는 라운드 상한(2)에 도달 → 이 수정은 사람이 하거나 💡로 남긴 채 머지
+    - fix·review의 기본 브랜치 판 사본(`git show origin/main:…`) 단계는 오류 없이 통과 (D의 미확인 항목 해소)
+  - **👍 승인(C)**: 이슈 #17 — 새 spec은 질문 5개 모두 `제안:` + 스킬에 정한 마지막 줄을 썼다 (C-1). 👍 없이 `agent:build` → "승인된 SPEC 꺼내기"가 "봇 SPEC에 소유자 👍가 없습니다"로 실패, 에이전트 미실행, 진단은 skipped(에이전트 전 실패), 실패 알림 게시 (run 41195132580). 👍 후 라벨 재부착 → build 성공, draft PR #18, ci·review 성공
+  - **SHA 고정(A)**: 위 실행 모두 SHA로 고정된 action으로 돌았다 (로그의 `Run actions/checkout@d23441a…`)
 
 ### 알려진 한계
 - 결과 확인은 "댓글이 **있다**"만 본다. 내용이 쓸모 있는지는 사람이 본다
