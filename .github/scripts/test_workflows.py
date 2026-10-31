@@ -1,20 +1,53 @@
-"""에이전트 워크플로 구조 규칙 (LEARNING: 조용한 성공 환류).
+"""워크플로 구조 규칙.
 
-claude-code-action은 '성공'으로 끝나도 결과물(PR·댓글)이 없을 수 있다 (HARNESS Phase 4 실패 5·10).
-그래서 에이전트를 돌리는 모든 job은 그 뒤에 결과물을 확인하는 단계와, 실패를 사람에게 알리는 단계를 가져야 한다.
+1. 조용한 성공 환류 (LEARNING): claude-code-action은 '성공'으로 끝나도 결과물(PR·댓글)이 없을 수 있다
+   (HARNESS Phase 4 실패 5·10). 에이전트를 돌리는 모든 job은 결과 확인 단계와 실패 알림 단계를 가진다.
+2. 공급망: 외부 action은 태그가 아니라 커밋 SHA로 고정한다 (태그는 옮겨질 수 있고, 이 job들은 쓰기 토큰·OAuth 토큰을 쥔다).
 """
 
+import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 WORKFLOWS = Path(__file__).parent.parent / "workflows"
+PINNED = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
+
+
+def _workflow_files() -> list[Path]:
+    return sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")])
+
+
+def _external_uses() -> list:
+    found = []
+    for path in _workflow_files():
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for name, job in doc.get("jobs", {}).items():
+            # job 수준 uses(재사용 워크플로)와 step 수준 uses 모두. ./ 로 시작하면 이 저장소 파일
+            for uses in [
+                job.get("uses"),
+                *(s.get("uses") for s in job.get("steps", [])),
+            ]:
+                if uses and not str(uses).startswith("./"):
+                    found.append(
+                        pytest.param(str(uses), id=f"{path.name}:{name}:{uses}")
+                    )
+    return found
+
+
+def test_external_actions_exist() -> None:
+    assert _external_uses()  # 0이면 아래 검사가 아무것도 안 봄
+
+
+@pytest.mark.parametrize("uses", _external_uses())
+def test_external_action_is_pinned_to_commit_sha(uses: str) -> None:
+    assert PINNED.match(uses), f"{uses}: 커밋 SHA(40자리)로 고정하고 태그는 주석으로"
 
 
 def _agent_jobs() -> list:
     jobs = []
-    for path in sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")]):
+    for path in _workflow_files():
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
         for name, job in doc.get("jobs", {}).items():
             steps = job.get("steps", [])

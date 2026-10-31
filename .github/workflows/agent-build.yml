@@ -25,10 +25,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       ISSUE: ${{ github.event.issue.number }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
       - name: 의존성 (게이트 훅이 pytest·ruff·mypy를 실행)
@@ -71,7 +71,7 @@ jobs:
           if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d  # v1
         id: claude
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"  # 에이전트가 쓴 테스트·훅이 OAuth 토큰을 읽지 못하게
@@ -90,7 +90,7 @@ jobs:
             --allowedTools "Read,Glob,Grep,Edit,Write,Skill,Agent,Task,Bash(git:*),Bash(python -m:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr edit:*)"
       - name: 게이트 기록 보관 (docs/LEARNING.md 관측)
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7
         with:
           name: gate-log
           path: .claude/state/gate-log.jsonl
