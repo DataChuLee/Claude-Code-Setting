@@ -1,4 +1,4 @@
-# ② 소유자가 `agent:build` 라벨(= SPEC 승인) → tdd → 게이트 → reviewer → commit → ship(draft PR)
+# ② 소유자가 `agent:build` 라벨(봇 SPEC이면 소유자 👍 + 라벨 = 승인) → tdd → 게이트 → reviewer → commit → ship(draft PR)
 # 그다음 ci·review를 직접 호출한다 (GITHUB_TOKEN으로 만든 PR 이벤트는 워크플로를 트리거하지 않음)
 name: agent-build
 on:
@@ -51,6 +51,13 @@ jobs:
           if [ "$(jq -r '.user.login' spec.json)" = "github-actions[bot]" ] \
              && [ "$(jq -r '.created_at' spec.json)" != "$(jq -r '.updated_at' spec.json)" ]; then
             echo "::error::봇이 쓴 SPEC 댓글이 수정됐습니다. 소유자 댓글로 다시 게시한 뒤 라벨을 다시 붙이세요"; exit 1
+          fi
+          # 봇 SPEC은 소유자의 👍가 있어야 승인: 주입된 이전 실행이 봇 이름으로 새 SPEC을 달아도 GITHUB_TOKEN으로는 소유자 반응을 못 만든다
+          # (에이전트 실행 전·기본 브랜치 체크아웃이라 저장소 스크립트를 그대로 실행해도 된다)
+          if [ "$(jq -r '.user.login' spec.json)" = "github-actions[bot]" ]; then
+            gh api --paginate "repos/$GITHUB_REPOSITORY/issues/comments/$(jq -r '.id' spec.json)/reactions" \
+              | jq -s add | python .github/scripts/spec_approval.py --owner "$OWNER" \
+              || { echo "::error::봇 SPEC에 소유자 👍가 없습니다"; exit 1; }
           fi
           mkdir -p .claude/tmp
           jq -r '.body' spec.json > .claude/tmp/spec.md
