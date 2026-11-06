@@ -14,7 +14,7 @@ http://127.0.0.1:4174/ 에서 메모 입력 → 저장 → 새로고침 순서�
 
 ## 브라우저 검사
 
-선택적으로 Playwright와 Chromium을 설치한 환경에서 검사한다. 기존 기본 CI에 브라우저 설치를 요구하지 않는다.
+PR 생성·코드 push 시 별도의 `qa / browser` 검사가 자동 실행된다. 검사 결과와 캡처·trace 확인 방법은 [PR 브라우저 QA](QA_AUTOMATION.md)에 있다. 기존 기본 CI와 독립적으로 실행한다.
 
 ```powershell
 python -m pip install playwright

@@ -1,0 +1,45 @@
+name: qa
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install browser dependencies
+        run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium
+      - name: Start demo server
+        run: |
+          mkdir -p qa-results
+          python -m http.server 4174 --bind 127.0.0.1 --directory examples/qa-demo >qa-results/server.log 2>&1 &
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:4174/ > /dev/null
+      - name: Check memo persistence after reload
+        run: |
+          set -o pipefail
+          python examples/qa-demo/check_save.py --url http://127.0.0.1:4174/ --expect persistent --output qa-results/memo 2>&1 | tee qa-results/browser.log
+      - name: Upload QA evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qa-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qa-results/
+          if-no-files-found: warn
+          retention-days: 7
