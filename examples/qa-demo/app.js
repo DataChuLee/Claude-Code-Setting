@@ -1,7 +1,7 @@
 "use strict";
 
 // The broken route intentionally confirms a save without persisting it.
-const broken = true;
+const broken = location.pathname.startsWith("/broken/");
 const storageKey = `fieldnotes-qa-demo:${broken ? "broken" : "fixed"}`;
 document.body.dataset.mode = broken ? "broken" : "fixed";
 document.body.innerHTML = `
